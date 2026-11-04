@@ -1,7 +1,9 @@
-// Tipos espejo de app/schemas/agent.py (asistente sobre el planificador).
+// Tipos espejo de app/schemas/agent.py (asistente sobre el planificador o sobre la cola de renovaciones).
 import type { Parameters } from '@/features/factory-order/types'
+import type { Parameters as RenewalParameters } from '@/features/renewals/types'
 
 export type Reasoning = 'low' | 'medium' | 'high'
+export type AgentCase = 'factory_order' | 'renewals'
 
 export interface AgentStatus {
   enabled: boolean
@@ -21,10 +23,18 @@ export interface ModelChoice {
   reasoning: Reasoning | null
 }
 
-export interface ChatRequest extends ModelChoice {
+// Lo que el asistente sabe de la pantalla: el caso y, según el caso, los supuestos (y el día y gestor de la cola)
+export interface ChatContext {
+  case: AgentCase
+  parameters: Parameters | null
+  renewal_parameters: RenewalParameters | null
+  day: string | null
+  agent: string | null
+}
+
+export interface ChatRequest extends ModelChoice, ChatContext {
   thread_id: string
   messages: ChatMessage[]
-  parameters: Parameters | null
 }
 
 export interface Decision {
@@ -32,10 +42,9 @@ export interface Decision {
   message?: string
 }
 
-export interface ResumeRequest extends ModelChoice {
+export interface ResumeRequest extends ModelChoice, ChatContext {
   thread_id: string
   decisions: Decision[]
-  parameters: Parameters | null
 }
 
 // Una acción que el agente quiere ejecutar y espera aprobación (human in the loop)
@@ -54,6 +63,10 @@ export type AgentEvent =
   | { type: 'action'; action: 'navigate'; path: string }
   | { type: 'action'; action: 'download_csv'; table: 'model' | 'version' }
   | { type: 'action'; action: 'plans_changed'; plan_id: string | null; plan_name: string | null }
+  | { type: 'action'; action: 'set_renewal_parameters'; renewal_parameters: RenewalParameters }
+  | { type: 'action'; action: 'set_day'; day: string }
+  | { type: 'action'; action: 'contact_logged'; contact_id: string | null; policy: string | null; agent: string | null }
+  | { type: 'action'; action: 'download_queue_csv'; day: string | null; pending_only: boolean | null }
   | { type: 'interrupt'; requests: ActionRequest[] }
   | AgentChart
   | { type: 'error'; message: string }

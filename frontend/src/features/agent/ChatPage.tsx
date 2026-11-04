@@ -8,12 +8,13 @@ import { PageHeader } from '@/features/app/PageHeader'
 import { agent, useAgentState } from './agentStore'
 import { Turn } from './ChatMessages'
 import { Composer } from './Composer'
-import { SUGGESTIONS } from './suggestions'
+import { AGENT_COPY } from './suggestions'
 
 // Pantalla de chat a página completa: columna centrada de mensajes, sugerencias al empezar y el cuadro de texto
 // fijo abajo. Es una demo: la conversación vive mientras estás aquí (o en el panel) y se pierde al salir.
 export default function ChatPage() {
-  const { status, turns, busy } = useAgentState()
+  const { status, turns, busy, case: caseId } = useAgentState()
+  const copy = AGENT_COPY[caseId]
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -51,12 +52,8 @@ export default function ChatPage() {
                 <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                   <Sparkles className="size-5" aria-hidden />
                 </div>
-                <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">¿En qué te ayudo con el pedido?</h1>
-                <p className="max-w-xl text-sm text-muted-foreground sm:text-[15px]">
-                  Usa las mismas herramientas que la pantalla: no calcula por su cuenta, consulta el motor del
-                  planificador y te lo explica. Puede cambiar los supuestos en pantalla, abrir secciones, dibujar
-                  gráficos, exportar los CSV y guardar el plan con tu aprobación.
-                </p>
+                <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{copy.title}</h1>
+                <p className="max-w-xl text-sm text-muted-foreground sm:text-[15px]">{copy.intro}</p>
               </div>
               {status && !enabled && (
                 <Alert>
@@ -67,7 +64,7 @@ export default function ChatPage() {
                 </Alert>
               )}
               <div className="grid gap-2 sm:grid-cols-2">
-                {SUGGESTIONS.map((s) => (
+                {copy.suggestions.map((s) => (
                   <button
                     key={s.title}
                     type="button"
@@ -95,9 +92,7 @@ export default function ChatPage() {
       <div className="shrink-0 px-4 pt-2 pb-4 sm:px-6">
         <div className="mx-auto w-full max-w-3xl">
           <Composer enabled={enabled} busy={busy} onSend={(t) => void agent.send(t)} onStop={agent.stop} autoFocus size="md" />
-          <p className="pt-2 text-center text-xs text-muted-foreground">
-            Las cifras salen del motor del planificador; la decisión es tuya. La conversación no se guarda al salir.
-          </p>
+          <p className="pt-2 text-center text-xs text-muted-foreground">{copy.footer}</p>
         </div>
       </div>
     </div>

@@ -4,22 +4,29 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, FastAPI
 
 from app.config import FRONTEND_DIST, get_settings
-from app.routers import agent, data, factory_order, health, sales
+from app.routers import agent, data, factory_order, health, renewals, sales
+from app.schemas.renewals import Parameters as RenewalParameters
+from app.services.common.errors import DataError
 from app.services.factory_order import tracking
-from app.services.factory_order.base import DataError
 from app.services.factory_order.source import get_source
+from app.services.renewals import calculation as renewals_calculation
+from app.services.renewals.source import get_source as get_renewals_source
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # Precarga la fuente y el backtest de ciclos pasados para que la primera pantalla no espere (~3 s).
-    # Si la fuente no está disponible, la app arranca igual y lo informa en /api/data/status.
+    # Precarga cada fuente y lo caro de calcular (backtest del Caso 1, simulación del Caso 2) para que la primera
+    # pantalla no espere. Si una fuente no está disponible, la app arranca igual y lo informa en su data/status.
     try:
         tracking.backtests(get_source().current())
     except DataError as exc:
-        logger.warning("No se precargó la fuente de datos: %s", exc.detail)
+        logger.warning("No se precargó la fuente del Caso 1: %s", exc.detail)
+    try:
+        renewals_calculation.resolve(get_renewals_source().current(), RenewalParameters())
+    except DataError as exc:
+        logger.warning("No se precargó la fuente del Caso 2: %s", exc.detail)
     yield
 
 
@@ -33,12 +40,14 @@ app = FastAPI(
 )
 
 # Todas las rutas de API cuelgan de /api. Para agregar un endpoint: crear app/routers/<nombre>.py
-# con su `router` e incluirlo aquí.
+# con su `router` e incluirlo aquí. El Caso 1 usa /api/data, /api/sales y /api/factory-order; el Caso 2,
+# /api/renewals (con su propia fuente en /api/renewals/data).
 api = APIRouter(prefix="/api")
 api.include_router(health.router)
 api.include_router(data.router)
 api.include_router(sales.router)
 api.include_router(factory_order.router)
+api.include_router(renewals.router)
 api.include_router(agent.router)
 app.include_router(api)
 

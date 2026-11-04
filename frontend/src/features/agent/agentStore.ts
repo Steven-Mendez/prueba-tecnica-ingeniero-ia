@@ -1,16 +1,20 @@
 import { useSyncExternalStore } from 'react'
 import { toast } from 'sonner'
 
-import { downloadCsv, fetchAgentStatus, forgetAgentThread, resumeAgentChat, streamAgentChat } from '@/lib/api'
-import { navigate } from '@/hooks/useHashRoute'
+import { downloadCsv, downloadQueueCsv, fetchAgentStatus, forgetAgentThread, resumeAgentChat, streamAgentChat } from '@/lib/api'
+import { navigate, type CaseId } from '@/hooks/useHashRoute'
 import type { ParametersAction } from '@/features/factory-order/parameters/state'
 import type { Parameters } from '@/features/factory-order/types'
-import type { AgentEvent, AgentStatus, ChatTurn, Decision, Reasoning } from './types'
+import type { RenewalParametersAction } from '@/features/renewals/parameters/state'
+import type { Parameters as RenewalParameters } from '@/features/renewals/types'
+import type { AgentEvent, AgentStatus, ChatContext, ChatTurn, Decision, Reasoning } from './types'
 
 // Estado del asistente, compartido entre el panel lateral y la pantalla de chat. Es una demo: la conversación
 // vive solo en memoria mientras el chat está abierto (pantalla o panel); al salir se pierde y el servidor olvida
-// el hilo. Sin librería de estado: un store externo de React.
+// el hilo. Sin librería de estado: un store externo de React. Cada prototipo tiene su propio asistente: al
+// cambiar de caso empieza otra conversación.
 interface AgentState {
+  case: CaseId
   open: boolean
   status: AgentStatus | null
   threadId: string
@@ -24,6 +28,7 @@ let nextId = 0
 const newId = (prefix: string) => `${prefix}${Date.now().toString(36)}-${(nextId++).toString(36)}`
 
 let state: AgentState = {
+  case: 'caso1',
   open: false,
   status: null,
   threadId: newId('c'),
@@ -66,14 +71,26 @@ function patchLast(fn: (turn: ChatTurn) => ChatTurn) {
   set({ turns: [...turns.slice(0, -1), fn(turns[turns.length - 1])] })
 }
 
-// Lo que el planificador tiene en pantalla y cómo cambiarlo; lo fija App en cada render
-export interface PlannerLink {
-  parameters: Parameters | null
-  dispatch: (action: ParametersAction) => void
-}
-let planner: PlannerLink = { parameters: null, dispatch: () => {} }
+// Lo que cada prototipo tiene en pantalla y cómo cambiarlo; lo fija el shell del caso en cada render
+export type AppLink =
+  | { case: 'caso1'; parameters: Parameters | null; dispatch: (action: ParametersAction) => void }
+  | {
+      case: 'caso2'
+      parameters: RenewalParameters | null
+      day: string | null
+      agent: string | null
+      dispatch: (action: RenewalParametersAction) => void
+      setDay: (iso: string) => void
+      onContactLogged: () => void
+    }
+let link: AppLink = { case: 'caso1', parameters: null, dispatch: () => {} }
 
-const onChatPage = () => window.location.hash.replace(/^#\/?/, '').startsWith('asistente')
+const context = (): ChatContext =>
+  link.case === 'caso1'
+    ? { case: 'factory_order', parameters: link.parameters, renewal_parameters: null, day: null, agent: null }
+    : { case: 'renewals', parameters: null, renewal_parameters: link.parameters, day: link.day, agent: link.agent }
+
+const onChatPage = () => /^#\/?(caso[12]\/)?asistente/.test(window.location.hash)
 
 function apply(event: AgentEvent) {
   switch (event.type) {
@@ -93,19 +110,19 @@ function apply(event: AgentEvent) {
       break
     case 'action':
       if (event.action === 'set_parameters') {
-        planner.dispatch({ type: 'replace', parameters: event.parameters })
+        if (link.case === 'caso1') link.dispatch({ type: 'replace', parameters: event.parameters })
         patchLast((t) => ({ ...t, actions: [...t.actions, 'Cambió los supuestos en pantalla'] }))
         toast.info('El asistente cambió los supuestos', {
           description: 'El pedido se recalculó en el planificador.',
-          action: { label: 'Ver', onClick: () => agent.goTo('planificador/pedido') },
+          action: { label: 'Ver', onClick: () => agent.goTo('caso1/planificador/pedido') },
         })
       } else if (event.action === 'navigate') {
         agent.goTo(event.path)
-        patchLast((t) => ({ ...t, actions: [...t.actions, `Abrió ${event.path.replace('/', ' › ')}`] }))
+        patchLast((t) => ({ ...t, actions: [...t.actions, `Abrió ${event.path.replace(/^caso[12]\//, '').replace('/', ' › ')}`] }))
       } else if (event.action === 'download_csv') {
         patchLast((t) => ({ ...t, actions: [...t.actions, `Descargó el CSV por ${event.table === 'model' ? 'modelo' : 'versión'}`] }))
-        if (planner.parameters) {
-          void downloadCsv(event.table, planner.parameters).then(
+        if (link.case === 'caso1' && link.parameters) {
+          void downloadCsv(event.table, link.parameters).then(
             (name) => toast.success(`Descargado ${name}`),
             (e: unknown) => toast.error('No se pudo descargar el CSV', { description: e instanceof Error ? e.message : String(e) }),
           )
@@ -114,8 +131,36 @@ function apply(event: AgentEvent) {
         patchLast((t) => ({ ...t, actions: [...t.actions, event.plan_name ? `Plan: ${event.plan_name}` : 'Planes actualizados'] }))
         toast.success('Planes guardados actualizados', {
           description: event.plan_name ?? undefined,
-          action: { label: 'Ver', onClick: () => agent.goTo('seguimiento') },
+          action: { label: 'Ver', onClick: () => agent.goTo('caso1/seguimiento') },
         })
+      } else if (event.action === 'set_renewal_parameters') {
+        if (link.case === 'caso2') link.dispatch({ type: 'replace', parameters: event.renewal_parameters })
+        patchLast((t) => ({ ...t, actions: [...t.actions, 'Cambió los supuestos en pantalla'] }))
+        toast.info('El asistente cambió los supuestos', {
+          description: 'La simulación se recalculó.',
+          action: { label: 'Ver', onClick: () => agent.goTo('caso2/supuestos') },
+        })
+      } else if (event.action === 'set_day') {
+        if (link.case === 'caso2') link.setDay(event.day)
+        patchLast((t) => ({ ...t, actions: [...t.actions, `Cambió el día de la cola a ${event.day}`] }))
+      } else if (event.action === 'contact_logged') {
+        if (link.case === 'caso2') link.onContactLogged()
+        patchLast((t) => ({ ...t, actions: [...t.actions, event.policy ? `Registró el resultado de ${event.policy}` : 'Registró un resultado'] }))
+        toast.success('Resultado registrado', {
+          description: event.policy ?? undefined,
+          action: { label: 'Ver cola', onClick: () => agent.goTo('caso2/cola') },
+        })
+      } else if (event.action === 'download_queue_csv') {
+        patchLast((t) => ({ ...t, actions: [...t.actions, 'Descargó la cola del día'] }))
+        if (link.case === 'caso2' && link.parameters) {
+          const day = event.day ?? link.day
+          if (day) {
+            void downloadQueueCsv(link.parameters, day, event.pending_only ?? false).then(
+              (name) => toast.success(`Descargado ${name}`),
+              (e: unknown) => toast.error('No se pudo descargar el CSV', { description: e instanceof Error ? e.message : String(e) }),
+            )
+          }
+        }
       }
       break
     case 'interrupt':
@@ -171,8 +216,13 @@ export const agent = {
   leaveChatPage: () => {
     if (!state.open) agent.reset()
   },
-  link: (next: PlannerLink) => {
-    planner = next
+  // Cada prototipo tiene su propio asistente: al cambiar de caso empieza otra conversación
+  link: (next: AppLink) => {
+    link = next
+    if (next.case !== state.case) {
+      agent.reset()
+      set({ case: next.case })
+    }
   },
   setModel: (model: string | null) => set({ model }),
   setReasoning: (reasoning: Reasoning) => set({ reasoning }),
@@ -202,7 +252,7 @@ export const agent = {
           model: state.model,
           reasoning: state.reasoning,
           messages: history.filter((t) => t.text.trim()).map((t) => ({ role: t.role, content: t.text })),
-          parameters: planner.parameters,
+          ...context(),
         },
         (event) => {
           if (state.threadId === threadId) apply(event)
@@ -220,7 +270,7 @@ export const agent = {
     const threadId = state.threadId
     return run((signal) =>
       resumeAgentChat(
-        { thread_id: threadId, model: state.model, reasoning: state.reasoning, decisions, parameters: planner.parameters },
+        { thread_id: threadId, model: state.model, reasoning: state.reasoning, decisions, ...context() },
         (event) => {
           if (state.threadId === threadId) apply(event)
         },

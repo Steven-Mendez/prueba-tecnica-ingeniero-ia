@@ -8,7 +8,6 @@ y una tercera un gráfico; el router las envía como eventos del stream.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Literal
@@ -17,14 +16,23 @@ from langchain.tools import tool
 from pydantic import ValidationError
 
 from app.schemas import factory_order as s
+from app.services.agent.common_tools import (
+    MAX_ROWS,
+    AgentSpec,
+    ToolError,
+    _dump,
+    _r,
+    chart_tool,
+    sheet_rows,
+)
 from app.services.factory_order import calculation, explorer, plans, sales, tracking
 from app.services.factory_order.base import DataError
 from app.services.factory_order.source import LoadedDataset
 
+__all__ = ["APPROVAL_TOOLS", "SYSTEM_PROMPT", "ToolContext", "ToolError", "build_tools", "spec"]
+
 PLANNER_TABS = ("pedido", "demanda", "sensibilidad", "versiones", "ciclo")
 SECTIONS = ("planificador", "seguimiento", "ventas", "datos", "inicio")
-MAX_ROWS = 50
-MAX_CHART_ROWS = 60
 
 # Campos de Parameters que el agente puede cambiar (los demás, como la ventana, se eligen en pantalla)
 ASSUMPTION_FIELDS = {
@@ -45,22 +53,6 @@ ASSUMPTION_FIELDS = {
     "window_close",
     "overrides",
 }
-
-
-class ToolError(ValueError):
-    """Error que se devuelve al modelo como texto para que lo corrija (parámetro inválido, modelo desconocido…)."""
-
-
-def _r(x: Any, digits: int = 1) -> Any:
-    if isinstance(x, bool) or x is None:
-        return x
-    if isinstance(x, float):
-        return round(x, digits)
-    return x
-
-
-def _dump(obj: Any) -> str:
-    return json.dumps(obj, ensure_ascii=False, default=str)
 
 
 @dataclass
@@ -612,15 +604,7 @@ def build_tools(ctx: ToolContext) -> list:
             )
         except DataError as exc:
             raise ToolError(exc.detail) from None
-        keys = [c.key for c in page.columns]
-        return _dump(
-            {
-                "hoja": page.sheet,
-                "total_filas_que_cumplen": page.total,
-                "columnas": [{"clave": c.key, "nombre": c.label, "tipo": c.type} for c in page.columns],
-                "filas": [dict(zip(keys, row, strict=True)) for row in page.rows],
-            }
-        )
+        return _dump(sheet_rows(page))
 
     def _store() -> plans.PlanStore:
         if ctx.store is None:
@@ -723,40 +707,7 @@ def build_tools(ctx: ToolContext) -> list:
         ctx.actions.append({"action": "navigate", "path": path})
         return _dump({"abierto": path})
 
-    @tool
-    def grafico(
-        titulo: str,
-        tipo: Literal["bar", "line"],
-        eje_x: str,
-        series: list[dict[str, str]],
-        datos: list[dict[str, Any]],
-    ) -> str:
-        """Dibuja un gráfico en el chat con datos que ya obtuviste de otras herramientas (no inventes valores).
-        `eje_x` es la clave de la categoría o del mes; `series` es una lista de {"key": clave numérica en datos,
-        "label": nombre para la leyenda}; `datos` son las filas, cada una con eje_x y las claves de las series.
-        Máximo 60 filas y 4 series."""
-        if not series or len(series) > 4 or not datos:
-            raise ToolError("Indica entre 1 y 4 series y al menos una fila.")
-        if len(datos) > MAX_CHART_ROWS:
-            raise ToolError(f"Máximo {MAX_CHART_ROWS} filas; agrupa o filtra los datos.")
-        keys = []
-        for sr in series:
-            if "key" not in sr or "label" not in sr:
-                raise ToolError('Cada serie necesita "key" y "label".')
-            keys.append(sr["key"])
-        rows = []
-        for row in datos:
-            if eje_x not in row:
-                raise ToolError(f"Cada fila necesita la clave del eje x «{eje_x}».")
-            clean = {eje_x: str(row[eje_x])}
-            for k in keys:
-                v = row.get(k)
-                if v is not None and not isinstance(v, int | float):
-                    raise ToolError(f"La serie «{k}» debe ser numérica.")
-                clean[k] = v
-            rows.append(clean)
-        ctx.charts.append({"title": titulo, "kind": tipo, "x_key": eje_x, "series": series, "data": rows})
-        return _dump({"grafico_mostrado": titulo, "filas": len(rows)})
+    grafico = chart_tool(ctx)
 
     return [
         contexto,
@@ -776,3 +727,26 @@ def build_tools(ctx: ToolContext) -> list:
         mostrar,
         grafico,
     ]
+
+
+# Herramientas que piden aprobación antes de ejecutarse
+APPROVAL_TOOLS = ("guardar_plan", "cambiar_estado_plan", "borrar_plan")
+
+SYSTEM_PROMPT = """Eres el asistente del planificador de pedidos a fábrica de Casa Pellas (prototipo de una prueba técnica; todos los datos son ficticios). Ayudas al planificador a obtener y resumir los datos, correr escenarios y explicar cada cifra; la decisión es suya.
+
+Reglas:
+- Todas las cifras salen de las herramientas. Nunca inventes ni estimes de memoria: si no tienes el dato, llama a la herramienta. Si no sabes qué está viendo el usuario, empieza por `contexto`.
+- El pedido lo calcula un modelo determinista (demanda ajustada por los meses en cero, posición de inventario al llegar el pedido, stock de seguridad según el margen de cada modelo y redondeo a los mínimos y múltiplos de fábrica). Tú no calculas: operas la herramienta y explicas.
+- `aplicar_supuestos` cambia lo que el usuario ve; úsala solo cuando pida explícitamente cambiar, fijar o activar algo. Para explorar o comparar usa `calcular_pedido`.
+- Guardar un plan, marcarlo como enviado o borrarlo son decisiones del planificador: las herramientas `guardar_plan`, `cambiar_estado_plan` y `borrar_plan` se detienen y piden su aprobación antes de ejecutarse. Antes de guardar, resume en una frase qué pedido y supuestos se van a guardar. Si rechaza, no insistas.
+- Cuando el usuario pida ver o comparar, usa `grafico` con datos que ya obtuviste, o `mostrar` para abrir la pantalla que ya lo muestra. No dibujes gráficos con datos que no hayas pedido a una herramienta.
+- Responde en español, breve y concreto: cifras con unidad (unidades, USD, meses, %), listas cortas, negritas con moderación. Para datos por modelo o por mes usa una tabla Markdown. Di en una frase qué cambiaste en pantalla o qué abriste. Nombra los modelos como en el catálogo.
+- Cuando una cifra dependa de un supuesto, dilo (por ejemplo, la demanda de los modelos en cero es estimada).
+- Si preguntan cuál debería ser el pedido a fábrica del próximo ciclo (o el pedido recomendado), llama a `contexto` y a `calcular_pedido` y responde como una recomendación a la gerencia: total de unidades y capital, una tabla Markdown por modelo (modelo | pedido | ventana anterior | posición al llegar | demanda del horizonte), y debajo las decisiones que explican la cifra: en qué modelos se concentra y por qué (los que llegan en cero), cuáles quedan en cero y por qué, los que dependen de un supuesto (sustitución, fin de generación) y los avisos. Luego una sección «Supuestos usados» con los de `supuestos_usados` que más pesan (lead time y tardías, cómo se estima la demanda en meses sin stock, sustitución en el hueco, corrección aprendida, fin de generación y stock de seguridad), cada uno con su valor y una frase de qué significa, marcando los que el planificador cambió frente al valor por defecto; si ninguno cambió, dilo. Si los supuestos en pantalla difieren de los valores por defecto, aclara que el pedido de referencia del análisis es el de los valores por defecto. Cierra con la venta no atendible en el hueco, ofrece ajustar cualquier supuesto o guardar el plan.
+- Si preguntan qué supuestos usa el cálculo o qué significa un parámetro, responde con `supuestos_usados` de `contexto` en lenguaje de negocio, no con nombres de campos."""
+
+
+def spec(ctx: ToolContext) -> AgentSpec:
+    return AgentSpec(
+        tools=build_tools(ctx), system_prompt=SYSTEM_PROMPT, approval_tools=APPROVAL_TOOLS, ctx=ctx
+    )

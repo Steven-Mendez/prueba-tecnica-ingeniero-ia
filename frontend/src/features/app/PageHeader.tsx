@@ -5,6 +5,8 @@ import { CircleHelp, Sparkles } from 'lucide-react'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { currentCase } from '@/hooks/useHashRoute'
+import { NAV_BY_CASE } from './nav'
 import { startTour } from './tour'
 import { agent, useAgentState } from '@/features/agent/agentStore'
 import {
@@ -26,6 +28,7 @@ export interface Crumb {
 // Encabezado de cada página dentro del inset: abrir/cerrar el sidebar, migas y acciones de la página
 export function PageHeader({ crumbs, actions }: { crumbs: Crumb[]; actions?: ReactNode }) {
   const assistant = useAgentState()
+  const nav = NAV_BY_CASE[currentCase()]
   return (
     <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/75 md:rounded-t-xl">
       <SidebarTrigger className="-ml-1" />
@@ -62,17 +65,19 @@ export function PageHeader({ crumbs, actions }: { crumbs: Crumb[]; actions?: Rea
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            {assistant.status?.enabled ? 'Asistente: pregunta, compara escenarios, pide gráficos' : 'Asistente (sin clave de API configurada)'}
+            {assistant.status?.enabled ? nav.assistantHint : 'Asistente (sin clave de API configurada)'}
           </TooltipContent>
         </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon-sm" onClick={startTour} aria-label="Recorrido guiado">
-              <CircleHelp />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Recorrido guiado</TooltipContent>
-        </Tooltip>
+        {nav.hasTour && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-sm" onClick={startTour} aria-label="Recorrido guiado">
+                <CircleHelp />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Recorrido guiado</TooltipContent>
+          </Tooltip>
+        )}
         <ThemeToggle />
       </div>
     </header>

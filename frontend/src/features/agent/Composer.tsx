@@ -3,7 +3,13 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { useAgentState } from './agentStore'
 import { ModelPicker } from './ModelPicker'
+
+const PLACEHOLDER = {
+  caso1: 'Pregunta por el pedido, los supuestos, las ventas…',
+  caso2: 'Pregunta por la cola del día, una póliza, los supuestos…',
+}
 
 interface Props {
   enabled: boolean
@@ -17,6 +23,7 @@ interface Props {
 // Cuadro de texto del chat: el texto arriba y, debajo, el selector de modelo y razonamiento a la izquierda y el
 // botón de enviar a la derecha. Enter envía, Shift+Enter salta de línea; crece con el texto hasta un máximo.
 export function Composer({ enabled, busy, onSend, onStop, autoFocus, size = 'sm' }: Props) {
+  const { case: caseId } = useAgentState()
   const [draft, setDraft] = useState('')
   const ref = useRef<HTMLTextAreaElement>(null)
 
@@ -59,7 +66,7 @@ export function Composer({ enabled, busy, onSend, onStop, autoFocus, size = 'sm'
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={onKey}
-        placeholder={enabled ? 'Pregunta por el pedido, los supuestos, las ventas…' : 'Asistente no configurado'}
+        placeholder={enabled ? PLACEHOLDER[caseId] : 'Asistente no configurado'}
         disabled={!enabled}
         rows={1}
         className={cn(

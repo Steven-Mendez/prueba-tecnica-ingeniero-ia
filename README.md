@@ -10,10 +10,12 @@ Todos los datos son ficticios.
 
 Los supuestos (`S1.x`, `S2.x`) se explican en la celda del notebook donde se aplican.
 
-El Caso 1 tiene además un **planificador de pedidos** (ver «App web»): reproduce el notebook exactamente y deja
-mover cada supuesto, ajustar el pedido por modelo, ver las ventas y cada hoja de datos por separado, medir la
-precisión en ventanas pasadas y seguir los planes guardados. Es un prototipo: su fuente es el Excel del caso; en
-producción la alimentarían procesos de ETL.
+Los dos casos tienen además una **app web** (ver «App web») que reproduce sus notebooks exactamente: el
+**planificador de pedidos** del Caso 1 deja mover cada supuesto, ajustar el pedido por modelo, ver las ventas y
+cada hoja de datos por separado, medir la precisión en ventanas pasadas y seguir los planes guardados; la **cola
+de renovaciones** del Caso 2 arma la cola del día por gestor, registra el resultado de cada llamada, muestra el
+panel del jefe y deja mover los supuestos de la simulación con su rango de impacto. Son prototipos: su fuente son
+los Excel de cada caso; en producción la alimentarían procesos de ETL.
 
 ## Estructura
 
@@ -23,7 +25,7 @@ data/processed/      caso{1,2}_limpio.pkl, escritos por 00_limpieza (no se versi
 notebooks/caso1/     00_limpieza → 01_eda → 02_pedido_fabrica
 notebooks/caso2/     00_limpieza → 01_eda_diagnostico → 02_prototipo_priorizacion
 outputs/             CSV y figuras (outputs/figuras/) que producen los notebooks 02
-app/                 API FastAPI y motor del Caso 1 en app/services/factory_order/ (ver «App web»)
+app/                 API FastAPI y motores de los dos casos (app/services/factory_order/, app/services/renewals/)
 frontend/            React + Vite + TypeScript + shadcn/ui + Recharts; su build (frontend/dist/) lo sirve la API
 tests/               pytest: el motor de la app reproduce los CSV del notebook y la API responde lo esperado
 ```
@@ -116,17 +118,26 @@ redondeado a los mínimos y múltiplos de fábrica → mezcla por versión segú
    en `outputs/`.
 4. Los resultados de la bitácora realimentan la tabla de tasas por segmento y tramo de anticipación.
 
+Con la app web el ciclo no necesita tocar los notebooks: con la fuente al día, la app limpia y cruza con la
+bitácora con las mismas reglas, arma la cola de cada día hábil con los supuestos en pantalla, deja registrar el
+resultado de cada llamada y descarga el mismo CSV de la cola.
+
 ## App web
 
-Un planificador de pedidos FastAPI + React, desplegable como un solo servicio en
-[FastAPI Cloud](https://fastapicloud.com). La interfaz usa el layout de sidebar de shadcn/ui: navegación a la
-izquierda (Planificador, Seguimiento, Ventas y Datos con cada hoja) y el contenido a la derecha.
+Dos prototipos FastAPI + React en un solo servicio, desplegable en [FastAPI Cloud](https://fastapicloud.com).
+La raíz (`#/`) da la bienvenida y deja elegir el prototipo: el Caso 1 vive en `#/caso1/…` y el Caso 2 en
+`#/caso2/…` (los enlaces antiguos del Caso 1, como `#/planificador`, redirigen). Cada uno usa el layout de
+sidebar de shadcn/ui con su propio menú, su grupo *Datos* con cada hoja y su propio asistente; el pie del sidebar
+cambia de prototipo.
 
-**Fuente de datos.** Es un prototipo: la fuente es el Excel del caso (`FACTORY_ORDER_EXCEL`, por defecto el del
-repo), el mismo del análisis. Esos datos no cambian, así que la app lo lee y lo valida una vez al arrancar. En
-producción la alimentarían procesos de ETL (ventas, inventario, CRM, pedidos a fábrica). No hay carga manual de
-archivos. Para revisar la fuente cada tanto existe `DATA_CHECK_SECONDS`, y `POST /api/data/refresh` la vuelve a
-leer.
+**Fuente de datos.** Son prototipos: la fuente de cada caso es su Excel (`FACTORY_ORDER_EXCEL` y
+`RENEWALS_EXCEL`, por defecto los del repo), los mismos del análisis. Esos datos no cambian, así que la app los
+lee y valida una vez al arrancar. En producción los alimentarían procesos de ETL (ventas, inventario, CRM,
+pedidos a fábrica; renovaciones y bitácora de llamadas). No hay carga manual de archivos. Para revisar las
+fuentes cada tanto existe `DATA_CHECK_SECONDS`, y `POST /api/data/refresh` y `POST /api/renewals/data/refresh`
+las vuelven a leer.
+
+### Caso 1 · planificador de pedidos
 
 El motor (`app/services/factory_order/`) es un puerto de `00_limpieza` y `02_pedido_fabrica`: con el Excel del
 repo y los valores por defecto da el mismo pedido (341 unidades, USD 10,951,670) y exporta los mismos CSV byte
@@ -177,6 +188,53 @@ a byte (lo verifican los tests). Secciones:
   `ANTHROPIC_API_KEY`; `AGENT_PROVIDER`, `AGENT_MODEL` y `AGENT_MODELS` en `.env.example`); sin clave, el chat lo
   indica y el resto de la app funciona igual.
 
+### Caso 2 · cola de renovaciones
+
+El motor (`app/services/renewals/`) es un puerto de `00_limpieza` y `02_prototipo_priorizacion`: con el Excel
+del repo y los valores por defecto produce la misma base limpia, la misma cola del 15-sep-2026 byte a byte
+(`outputs/cola_renovaciones_2026-09-15.csv`, 116 pólizas) y el mismo rango de impacto del notebook (piso
+USD 28,615, meta 41,233 y techo 50,221–62,718 al mes; 100 % de primeros contactos en ventana y 83 % de uso de
+la capacidad). Lo verifican los tests. La simulación se calcula una vez por conjunto de supuestos y se guarda en
+caché; el día elegido solo recorta la cola. Secciones:
+
+- **Inicio.** Qué hace el prototipo (las tres reglas: enrutar por canal, abrir a 14 días, ordenar por fecha
+  límite y valor) y arranque del recorrido guiado (driver.js), que pasa por el Panel del jefe y Supuestos y
+  simulación y termina en la Cola del día con el ejercicio completo: registrar el resultado de la primera
+  llamada. También se abre desde el icono «?» de cualquier pantalla del caso (cada prototipo tiene su recorrido:
+  `frontend/src/features/app/tourCaso1.ts` y `tourCaso2.ts`).
+- **Cola del día.** Lo que vería cada gestor por la mañana: para un día hábil del periodo de 5 gestores
+  (dic-2025 → sep-2026) y un gestor (o todos), las pólizas de la cola telefónica pendientes de primer contacto,
+  ordenadas por días para la fecha límite y, a igual fecha, por score (comisión potencial × mejora esperada del
+  segmento), con teléfono, vencimiento, prima anterior y nueva, cambio de prima y comisión. «Registrar» anota el
+  resultado de la llamada (contactado, pide llamar después, cotización enviada, cierre, no contesta, número
+  equivocado) con una nota: la póliza pasa a *Registradas* (con «deshacer»), sale de las pendientes y alimenta
+  los indicadores del día (registradas, contactos efectivos, % en la ventana 8–14, anticipación mediana). El
+  registro nunca entra a la simulación: es la bitácora de la app, un JSON por registro en `CONTACT_LOG_DIR`.
+  «Descargar cola» produce el CSV del notebook (o solo las pendientes).
+- **Panel del jefe.** Qué entra ese día por cada canal (cola telefónica, canal automático, corrección de
+  datos), carga del día frente a la capacidad, uso medio de la capacidad en la simulación, pendientes y
+  registros por gestor con su tasa histórica, las llamadas simuladas por día hábil frente a la capacidad, el
+  primer contacto por tramo de anticipación (real frente a simulado) y la tabla de indicadores del piloto.
+- **Supuestos y simulación.** Como el planificador: los supuestos en una columna junto al resultado (apertura
+  del expediente, fecha límite, gracia, capacidad del equipo, gestores, meta del piloto en ventana y tasa del
+  canal automático), cada uno con su ayuda; la simulación se recalcula al moverlos y muestra el rango de
+  comisión adicional (piso, meta, techo y la referencia del diagnóstico) con el cambio frente a los valores por
+  defecto, la anticipación real frente a la simulada, la sensibilidad a la capacidad, la tabla de tasas por
+  segmento y tramo, el enrutamiento por canal, la validación fuera de muestra y el tamaño del piloto. Con los
+  valores por defecto, un indicador confirma que la cola del día de ejemplo coincide con el CSV del notebook.
+- **Datos.** Las hojas *Renovaciones*, *Bitácora de llamadas* y *Equipo* ya limpias, con las columnas que
+  agrega la limpieza (anticipación, tramo, teléfono válido, comisión…), búsqueda, filtro por gestor, fechas,
+  orden y paginación.
+- **Asistente.** El mismo agente que el Caso 1, con sus propias herramientas
+  (`app/services/agent/renewals_tools.py`) y su propio prompt: lee el contexto (día, supuestos, pendientes por
+  gestor, impacto), consulta la cola del día, simula otros supuestos sin tocar la pantalla o los aplica, cambia el
+  día, explica cómo se llega a la prioridad de una póliza, redacta el mensaje del canal automático para una
+  domiciliada, financiada o flota, resume las llamadas previas antes de un seguimiento, consulta las hojas,
+  exporta la cola, abre secciones y dibuja gráficos. **Human in the loop:** registrar el resultado de una
+  llamada se detiene y pide aprobación antes de ejecutarse. La pregunta de trabajo («¿a quién llamo primero
+  hoy?») devuelve la cola ordenada con la explicación del orden. No hay telefonía ni envío de mensajes reales:
+  el prototipo arma la cola, redacta borradores y registra resultados.
+
 | Ruta | Qué hace |
 |---|---|
 | `GET /api/health` | Estado de la app |
@@ -190,6 +248,16 @@ a byte (lo verifican los tests). Secciones:
 | `GET /api/factory-order/accuracy` | Precisión del pronóstico en los ciclos cerrados y corrección aprendida |
 | `GET`, `POST /api/factory-order/plans` · `GET`, `PATCH`, `DELETE /api/factory-order/plans/{id}` | Planes guardados con su seguimiento |
 | `GET /api/factory-order/notebook-order` | El pedido tal como lo exportó el notebook (referencia) |
+| `GET /api/renewals/data/status` · `POST /api/renewals/data/refresh` | Fuente del Caso 2: versión, qué hizo la limpieza y las hojas |
+| `GET /api/renewals/data/sheets/{renewals,calls,team}` | Una hoja limpia y paginada (`model` filtra por gestor) |
+| `GET /api/renewals/parameters` | Supuestos por defecto y valores derivados (periodo, equipo, día de ejemplo) |
+| `POST /api/renewals/simulate` | Simula el periodo de 5 gestores con los supuestos del cuerpo (`{}` = los del notebook): canales, tasas, anticipación, capacidad, sensibilidad, impacto, piloto y comparación con el notebook |
+| `POST /api/renewals/queue?day=&agent=` | La cola del día (pendientes y registradas) con los supuestos del cuerpo |
+| `POST /api/renewals/queue/export?day=&pending_only=` | El CSV de la cola, como el del notebook |
+| `POST /api/renewals/day?day=` | Panel del jefe: qué entra por canal, carga frente a capacidad, gestores y métricas |
+| `POST /api/renewals/policies/{policy}?day=` | Una póliza: canal, fila en la cola, llamadas, registros, explicación y mensajes |
+| `GET`, `POST /api/renewals/contacts` · `DELETE /api/renewals/contacts/{id}` | Resultados de llamada registrados desde la app |
+| `GET /api/renewals/notebook-queue` | La cola tal como la exportó el notebook (referencia) |
 | `GET /api/agent/status` | Proveedor, modelo por defecto y modelos del selector del asistente |
 | `POST /api/agent/chat` | Una vuelta del asistente en streaming (SSE): texto, herramientas, acciones sobre la UI, gráficos y aprobaciones pendientes |
 | `POST /api/agent/resume` | Continúa tras una aprobación (human in the loop) con la decisión de la persona |
@@ -200,8 +268,9 @@ a byte (lo verifican los tests). Secciones:
 ```
 app/main.py                          crea la app, monta los routers bajo /api y sirve frontend/dist
 app/config.py                        Settings (pydantic-settings, lee .env) y rutas relativas a la raíz del repo
-app/routers/                         data.py (fuente y hojas), sales.py, factory_order.py (planificador), agent.py
+app/routers/                         data.py (fuente y hojas), sales.py, factory_order.py (planificador), renewals.py (Caso 2), agent.py
 app/schemas/                         modelos Pydantic (frontend/src/features/*/types.ts los replican)
+app/services/common/                 lo compartido por los dos motores: DataError, lectura del Excel, DataSource genérica, explorador de hojas
 app/services/factory_order/
   source.py                          fuente de datos: lee el Excel (y en producción recargaría lo que deje el ETL)
   cleaning.py                        lectura y limpieza del Excel (00_limpieza) y lectura de los comunicados
@@ -211,10 +280,19 @@ app/services/factory_order/
   tracking.py                        ciclos pasados: precisión del pronóstico y corrección aprendida
   plans.py                           planes guardados (un JSON por plan en PLANS_DIR) y su seguimiento
   explorer.py, sales.py              hojas por separado y tablero de ventas
+app/services/renewals/
+  source.py, cleaning.py             fuente del Caso 2 y limpieza (00_limpieza): base limpia idéntica a la del notebook
+  engine.py                          motor (02_prototipo_priorizacion §2–§8): canales, tasas, simulación, impacto, cola del día, piloto
+  calculation.py                     escenarios en caché, cola del día con los registros, panel, exportación y detalle de póliza
+  contact_log.py                     resultados de llamada registrados desde la app (un JSON por registro en CONTACT_LOG_DIR)
+  explanation.py, explorer.py        «cómo se llega» a la prioridad, mensajes del canal automático, resumen de llamadas; hojas
 app/services/agent/
-  tools.py                           herramientas del asistente: envuelven calculation, tracking, sales y explorer
-  runner.py                          el agente (create_agent de LangChain), su prompt, aprobaciones y el stream de eventos
-frontend/src/features/               app (sidebar), factory-order (planificador), tracking, sales, data, agent (chat)
+  common_tools.py                    lo común a los dos asistentes: AgentSpec, ToolError, el gráfico en el chat
+  tools.py                           herramientas del Caso 1: envuelven calculation, tracking, sales y explorer; su prompt
+  renewals_tools.py                  herramientas del Caso 2: cola del día, simular, explicar, redactar, registrar; su prompt
+  runner.py                          el agente (create_agent de LangChain), aprobaciones y el stream de eventos
+frontend/src/features/               landing (elegir prototipo), app (sidebar, shell del Caso 1), factory-order, tracking,
+                                     sales, data, agent (chat), renewals (shell y pantallas del Caso 2)
 ```
 
 El código está en inglés; comentarios, documentación e interfaz en español. Para agregar un endpoint: el modelo
@@ -225,9 +303,10 @@ reincluirlo en `.fastapicloudignore` para que llegue al deploy.
 Las dependencias de la API van en `[project.dependencies]`; lo que solo usan los notebooks va en el grupo
 `notebooks`, que no es un grupo por defecto, así que un `uv sync` sin flags (como el del deploy) no lo instala.
 
-Limitación del prototipo: los planes guardados son archivos JSON en `PLANS_DIR`. En FastAPI Cloud el disco no
-es persistente, así que un redespliegue los borra; en producción irían a una base de datos, y la fuente apuntaría
-al archivo o al almacenamiento donde escribe el ETL.
+Limitación del prototipo: los planes guardados (`PLANS_DIR`) y los resultados de llamada registrados
+(`CONTACT_LOG_DIR`) son archivos JSON. En FastAPI Cloud el disco no es persistente, así que un redespliegue los
+borra; en producción irían a una base de datos (los resultados, a la bitácora de llamadas del CRM), y las fuentes
+apuntarían al archivo o al almacenamiento donde escribe el ETL.
 
 ### Correr en local
 
@@ -260,10 +339,11 @@ uv run fastapi deploy                   # la primera vez abre el navegador para 
 
 Qué se sube: `fastapi deploy` respeta `.gitignore` y `.fastapicloudignore` (este último manda) y nunca sube
 `.env`. `frontend/dist/` está en `.gitignore` (no se versiona) y `.fastapicloudignore` lo reincluye con
-`!frontend/dist/`; también excluye `notebooks/`, `tests/`, el resto de `frontend/`, todo `data/` salvo el Excel
-del Caso 1 y todo `outputs/` salvo el CSV con el que se compara. El deploy queda en `app/`, `pyproject.toml`,
-`uv.lock`, `.python-version`, `README.md`, `frontend/dist/`, `data/raw/caso1_vehiculos_nuevos.xlsx` y
-`outputs/pedido_2026-10_por_modelo.csv`.
+`!frontend/dist/`; también excluye `notebooks/`, `tests/`, el resto de `frontend/`, todo `data/` salvo los Excel
+de los dos casos y todo `outputs/` salvo los CSV con los que se compara. El deploy queda en `app/`,
+`pyproject.toml`, `uv.lock`, `.python-version`, `README.md`, `frontend/dist/`,
+`data/raw/caso1_vehiculos_nuevos.xlsx`, `data/raw/caso2_renovaciones.xlsx`,
+`outputs/pedido_2026-10_por_modelo.csv` y `outputs/cola_renovaciones_2026-09-15.csv`.
 
 En producción la app no arranca si falta `frontend/dist/`, así que un deploy sin build falla en vez de
 publicar una página vacía. Las variables de `.env.example` se configuran en el panel de FastAPI Cloud
@@ -272,7 +352,7 @@ publicar una página vacía. Las variables de `.env.example` se configuran en el
 ## Calidad
 
 ```bash
-uv run pytest                    # el motor reproduce los CSV del notebook; API, asistente (con modelo falso) y validaciones
+uv run pytest                    # los motores reproducen los CSV de los notebooks; API, asistentes (con modelo falso) y validaciones
 uv run ruff check notebooks app tests && uv run ruff format --check notebooks app tests
 cd frontend && npm run lint && npm run build
 ```
@@ -288,11 +368,12 @@ una revisión final del repositorio contra el enunciado (re-ejecución completa,
 el texto contra las tablas calculadas, lint). El método (el ciclo de vida del análisis descrito arriba) y las
 decisiones de análisis (qué supuestos tomar, cómo corregir la demanda censurada, la economía del stock de
 seguridad, el enrutamiento por canal y las reglas de la cola) son míos y están documentados como supuestos
-`S1.x` y `S2.x` en la celda donde se aplican. La app web del Caso 1 (motor, API y pantalla) también se
-escribió con Claude Code a partir de los notebooks; su validación es el último punto de la lista. El asistente
-de la app es la pieza de IA del sistema y trabaja alrededor del cálculo, no en su lugar: sus herramientas llaman
-al motor determinista y sus tests usan un modelo de lenguaje falso con respuestas guionadas, de modo que lo que
-se comprueba es el cableado (herramientas, acciones sobre la UI, stream), no al proveedor.
+`S1.x` y `S2.x` en la celda donde se aplican. Las apps web de los dos casos (motores, API y pantallas) también
+se escribieron con Claude Code a partir de los notebooks; su validación es el último punto de la lista. Los
+asistentes de la app son la pieza de IA del sistema y trabajan alrededor del cálculo, no en su lugar: sus
+herramientas llaman a los motores deterministas y sus tests usan un modelo de lenguaje falso con respuestas
+guionadas, de modo que lo que se comprueba es el cableado (herramientas, acciones sobre la UI, stream), no al
+proveedor.
 
 Nada de lo que devolvió la IA se aceptó sin comprobarlo:
 
@@ -307,7 +388,9 @@ Nada de lo que devolvió la IA se aceptó sin comprobarlo:
   variantes del stock de seguridad; el impacto del Caso 2 se reporta como rango (piso observado, meta del piloto y
   techo de la simulación, que a su vez varía según cómo se valore el tramo de anticipación) en vez de una sola cifra.
 - **Reproducibilidad.** Todo se vuelve a ejecutar desde los Excel originales con los comandos de arriba.
-- **La app contra el notebook.** Los tests (`tests/`) comprueban que el motor de la app, a partir del Excel
+- **La app contra los notebooks.** Los tests (`tests/`) comprueban que el motor del Caso 1, a partir del Excel
   original, produce la misma base limpia que `00_limpieza`, los mismos CSV por modelo y por versión que
   `02_pedido_fabrica` (texto idéntico) y los mismos totales en los nueve escenarios de sensibilidad, y que cada
-  control del panel reproduce el escenario del notebook que le corresponde.
+  control del panel reproduce el escenario del notebook que le corresponde; y que el motor del Caso 2 produce
+  las mismas tablas que su `00_limpieza`, la misma cola del día de ejemplo que `02_prototipo_priorizacion`
+  (texto idéntico, aunque haya resultados registrados) y los mismos números de simulación, impacto y piloto.

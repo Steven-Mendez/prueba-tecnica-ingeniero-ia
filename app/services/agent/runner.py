@@ -1,7 +1,7 @@
-"""El asistente: un agente LangChain (bucle de herramientas de LangGraph) sobre el planificador.
+"""El asistente: un agente LangChain (bucle de herramientas de LangGraph) sobre cada prototipo.
 
-El modelo no calcula el pedido: llama a las herramientas de `tools.py`, que corren el mismo motor determinista
-que la pantalla, y resume en lenguaje de negocio. `stream_chat` traduce el stream de LangGraph a los eventos que
+El modelo no calcula nada: llama a las herramientas del caso (`tools.py` para el planificador, `renewals_tools.py`
+para la cola de renovaciones), que corren el mismo motor determinista que la pantalla, y resume en lenguaje de negocio. `stream_chat` traduce el stream de LangGraph a los eventos que
 consume el frontend (texto, llamadas a herramientas, acciones sobre la UI, gráficos, aprobaciones pendientes).
 
 Human in the loop: guardar, borrar o marcar como enviado un plan se detiene con un `interrupt` de LangGraph
@@ -25,26 +25,11 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
 from app.schemas import agent as s
-from app.services.agent.tools import ToolContext, ToolError, build_tools
+from app.services.agent.common_tools import AgentSpec, ToolError, UIContext
 
 logger = logging.getLogger(__name__)
 
-# Herramientas que piden aprobación antes de ejecutarse
-APPROVAL_TOOLS = ("guardar_plan", "cambiar_estado_plan", "borrar_plan")
 THREAD_TTL_SECONDS = 2 * 60 * 60
-
-SYSTEM_PROMPT = """Eres el asistente del planificador de pedidos a fábrica de Casa Pellas (prototipo de una prueba técnica; todos los datos son ficticios). Ayudas al planificador a obtener y resumir los datos, correr escenarios y explicar cada cifra; la decisión es suya.
-
-Reglas:
-- Todas las cifras salen de las herramientas. Nunca inventes ni estimes de memoria: si no tienes el dato, llama a la herramienta. Si no sabes qué está viendo el usuario, empieza por `contexto`.
-- El pedido lo calcula un modelo determinista (demanda ajustada por los meses en cero, posición de inventario al llegar el pedido, stock de seguridad según el margen de cada modelo y redondeo a los mínimos y múltiplos de fábrica). Tú no calculas: operas la herramienta y explicas.
-- `aplicar_supuestos` cambia lo que el usuario ve; úsala solo cuando pida explícitamente cambiar, fijar o activar algo. Para explorar o comparar usa `calcular_pedido`.
-- Guardar un plan, marcarlo como enviado o borrarlo son decisiones del planificador: las herramientas `guardar_plan`, `cambiar_estado_plan` y `borrar_plan` se detienen y piden su aprobación antes de ejecutarse. Antes de guardar, resume en una frase qué pedido y supuestos se van a guardar. Si rechaza, no insistas.
-- Cuando el usuario pida ver o comparar, usa `grafico` con datos que ya obtuviste, o `mostrar` para abrir la pantalla que ya lo muestra. No dibujes gráficos con datos que no hayas pedido a una herramienta.
-- Responde en español, breve y concreto: cifras con unidad (unidades, USD, meses, %), listas cortas, negritas con moderación. Para datos por modelo o por mes usa una tabla Markdown. Di en una frase qué cambiaste en pantalla o qué abriste. Nombra los modelos como en el catálogo.
-- Cuando una cifra dependa de un supuesto, dilo (por ejemplo, la demanda de los modelos en cero es estimada).
-- Si preguntan cuál debería ser el pedido a fábrica del próximo ciclo (o el pedido recomendado), llama a `contexto` y a `calcular_pedido` y responde como una recomendación a la gerencia: total de unidades y capital, una tabla Markdown por modelo (modelo | pedido | ventana anterior | posición al llegar | demanda del horizonte), y debajo las decisiones que explican la cifra: en qué modelos se concentra y por qué (los que llegan en cero), cuáles quedan en cero y por qué, los que dependen de un supuesto (sustitución, fin de generación) y los avisos. Luego una sección «Supuestos usados» con los de `supuestos_usados` que más pesan (lead time y tardías, cómo se estima la demanda en meses sin stock, sustitución en el hueco, corrección aprendida, fin de generación y stock de seguridad), cada uno con su valor y una frase de qué significa, marcando los que el planificador cambió frente al valor por defecto; si ninguno cambió, dilo. Si los supuestos en pantalla difieren de los valores por defecto, aclara que el pedido de referencia del análisis es el de los valores por defecto. Cierra con la venta no atendible en el hueco, ofrece ajustar cualquier supuesto o guardar el plan.
-- Si preguntan qué supuestos usa el cálculo o qué significa un parámetro, responde con `supuestos_usados` de `contexto` en lenguaje de negocio, no con nombres de campos."""
 
 # Un checkpointer para todo el proceso: el estado de cada conversación vive bajo su thread_id
 checkpointer = InMemorySaver()
@@ -75,16 +60,17 @@ async def _atool_error(exc: Exception, request) -> str | None:
     return _tool_error(exc, request)
 
 
-def build_agent(model: BaseChatModel, ctx: ToolContext):
+def build_agent(model: BaseChatModel, spec: AgentSpec):
+    """El agente de un caso: sus herramientas, su prompt y las que piden aprobación (ver `AgentSpec`)."""
     return create_agent(
         model,
-        tools=build_tools(ctx),
-        system_prompt=SYSTEM_PROMPT,
+        tools=spec.tools,
+        system_prompt=spec.system_prompt,
         middleware=[
             ToolErrorMiddleware(on_error=_tool_error, aon_error=_atool_error),
             HumanInTheLoopMiddleware(
-                interrupt_on=dict.fromkeys(APPROVAL_TOOLS, True),
-                description_prefix="Esta acción requiere la aprobación del planificador",
+                interrupt_on=dict.fromkeys(spec.approval_tools, True),
+                description_prefix="Esta acción requiere la aprobación de la persona",
             ),
         ],
         checkpointer=checkpointer,
@@ -110,7 +96,7 @@ def _interrupt_event(interrupts) -> dict[str, Any]:
     return s.InterruptEvent(requests=requests).model_dump()
 
 
-async def _stream(agent, payload, config, ctx: ToolContext) -> AsyncIterator[dict[str, Any]]:
+async def _stream(agent, payload, config, ctx: UIContext) -> AsyncIterator[dict[str, Any]]:
     try:
         async for chunk in agent.astream(payload, config, stream_mode=["messages", "updates"], version="v2"):
             if chunk["type"] == "messages":
@@ -142,27 +128,27 @@ async def _stream(agent, payload, config, ctx: ToolContext) -> AsyncIterator[dic
 
 
 async def stream_chat(
-    model: BaseChatModel, ctx: ToolContext, thread_id: str, history: list[s.ChatMessage]
+    model: BaseChatModel, spec: AgentSpec, thread_id: str, history: list[s.ChatMessage]
 ) -> AsyncIterator[dict[str, Any]]:
     """Una vuelta de conversación. Si el servidor ya tiene el hilo, basta el último mensaje; si no (primer
     mensaje o reinicio), se manda el historial completo que guarda el frontend."""
     _touch(thread_id)
-    agent = build_agent(model, ctx)
+    agent = build_agent(model, spec)
     config = {"configurable": {"thread_id": thread_id}}
     state = await agent.aget_state(config)
     known = bool((state.values or {}).get("messages"))
     messages = _to_messages(history[-1:] if known else history)
-    async for event in _stream(agent, {"messages": messages}, config, ctx):
+    async for event in _stream(agent, {"messages": messages}, config, spec.ctx):
         yield event
 
 
 async def resume_chat(
-    model: BaseChatModel, ctx: ToolContext, thread_id: str, decisions: list[s.Decision]
+    model: BaseChatModel, spec: AgentSpec, thread_id: str, decisions: list[s.Decision]
 ) -> AsyncIterator[dict[str, Any]]:
     """Continúa una conversación detenida en una aprobación con las decisiones de la persona."""
     _touch(thread_id)
-    agent = build_agent(model, ctx)
+    agent = build_agent(model, spec)
     config = {"configurable": {"thread_id": thread_id}}
     payload = Command(resume={"decisions": [d.model_dump(exclude_none=True) for d in decisions]})
-    async for event in _stream(agent, payload, config, ctx):
+    async for event in _stream(agent, payload, config, spec.ctx):
         yield event

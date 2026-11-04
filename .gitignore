@@ -19,5 +19,6 @@ data/processed/
 
 # Configuración local (ver .env.example)
 .env
-# Planes guardados desde la app (se generan al usarla)
+# Planes guardados y resultados de llamada registrados desde la app (se generan al usarla)
 data/plans/
+data/contact_log/

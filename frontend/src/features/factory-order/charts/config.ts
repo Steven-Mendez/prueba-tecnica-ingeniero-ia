@@ -1,15 +1,8 @@
-// Colores y etiquetas de los gráficos. Cada color tiene un trabajo fijo en toda la app (ver index.css):
-// azul = pedido / serie principal, naranja = demanda recuperada, rojo = riesgo, gris = referencia, tinta = previo.
+// Etiquetas y colores de los gráficos del Caso 1 (los colores comunes viven en components/charts/colors.ts)
 import type { ChartConfig } from '@/components/ui/chart'
+import { COLORS } from '@/components/charts/colors'
 
-export const COLORS = {
-  primary: 'var(--chart-1)',
-  recovered: 'var(--chart-2)',
-  risk: 'var(--chart-3)',
-  reference: 'var(--chart-4)',
-  ink: 'var(--chart-5)',
-  primarySoft: 'color-mix(in oklab, var(--chart-1) 55%, var(--card))',
-} as const
+export { COLORS }
 
 export const orderChartConfig = (windowLabel: string, previousLabel: string, horizonLabel: string) =>
   ({

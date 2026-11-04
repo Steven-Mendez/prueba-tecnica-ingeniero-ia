@@ -9,31 +9,31 @@ import type { DataStatus } from '@/features/data/types'
 
 const SECTIONS = [
   {
-    href: '#/seguimiento',
+    href: '#/caso1/seguimiento',
     icon: Target,
     title: 'Seguimiento',
     text: 'Qué tan bien acierta la herramienta en las ventanas pasadas y los pedidos guardados.',
   },
   {
-    href: '#/planificador',
+    href: '#/caso1/planificador',
     icon: ClipboardList,
     title: 'Planificador',
     text: 'Crear el pedido a fábrica: la propuesta, los supuestos, los ajustes por modelo y el paquete final.',
   },
   {
-    href: '#/ventas',
+    href: '#/caso1/ventas',
     icon: TrendingUp,
     title: 'Ventas',
     text: 'Venta y venta perdida por mes, modelo, sucursal y tipo de cliente.',
   },
   {
-    href: '#/datos',
+    href: '#/caso1/datos',
     icon: FileSpreadsheet,
     title: 'Datos',
     text: 'Cada hoja del Excel del caso, ya limpia, con búsqueda y filtros.',
   },
   {
-    href: '#/asistente',
+    href: '#/caso1/asistente',
     icon: Sparkles,
     title: 'Asistente',
     text: 'Pregunta en lenguaje natural: el agente consulta el motor, compara escenarios, grafica y cambia los supuestos.',
@@ -67,7 +67,7 @@ export default function HomePage({ status }: { status: DataStatus | null }) {
                 Empezar el recorrido guiado
               </Button>
               <Button variant="outline" size="lg" asChild>
-                <a href="#/planificador">
+                <a href="#/caso1/planificador">
                   Ir directo al planificador
                   <ArrowRight />
                 </a>

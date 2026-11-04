@@ -1,4 +1,4 @@
-// Tipos espejo de app/schemas/data.py: la fuente de datos y el explorador de hojas.
+// Tipos espejo de app/schemas/data.py: las fuentes de datos y el explorador de hojas.
 
 export interface CleaningChange {
   sheet: string
@@ -27,7 +27,8 @@ export interface SheetInfo {
   date_to: string | null
 }
 
-export interface DataStatus {
+// Lo común a las dos fuentes (SourceStatusBase)
+export interface SourceStatus {
   path: string
   file_name: string
   version: string
@@ -37,16 +38,33 @@ export interface DataStatus {
   check_seconds: number | null // null = se lee una vez (prototipo)
   last_error: string | null
   last_error_at: string | null
-  data_cutoff: string
   period_start: string
   period_end: string
-  models: string[]
   sheets: SheetInfo[]
-  changes: CleaningChange[]
   quality: QualityIssue[]
+  warnings: string[]
+}
+
+// Fuente del Caso 1
+export interface DataStatus extends SourceStatus {
+  data_cutoff: string
+  models: string[]
+  changes: CleaningChange[]
   reconciliation_differences: number
   reconciliation_cells: number
-  warnings: string[]
+}
+
+// Fuente del Caso 2
+export interface RenewalsDataStatus extends SourceStatus {
+  staffing_change_date: string
+  policies: number
+  calls: number
+  months: number
+  duplicates_removed: number
+  invalid_phones: number
+  first_contact_filled: number
+  renewed_without_closing: number
+  late_first_contacts: number
 }
 
 export type ColumnType = 'text' | 'number' | 'money' | 'date' | 'bool'
@@ -68,7 +86,8 @@ export interface SheetPage {
   page_size: number
   model_column: string | null
   date_column: string | null
-  models: string[]
+  models: string[] // valores del filtro principal (modelos en el Caso 1, gestores en el 2)
+  filter_label: string
 }
 
 export interface SheetQuery {
@@ -82,3 +101,5 @@ export interface SheetQuery {
   sort: string | null
   desc: boolean
 }
+
+export type SheetFetcher = (key: string, q: SheetQuery, signal?: AbortSignal) => Promise<SheetPage>

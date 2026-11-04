@@ -1,12 +1,16 @@
-"""Esquemas del asistente (agente sobre el planificador). `frontend/src/features/agent/types.ts` los replica."""
+"""Esquemas del asistente (agente sobre el planificador o sobre la cola de renovaciones).
+`frontend/src/features/agent/types.ts` los replica."""
 
+from datetime import date
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from app.schemas.factory_order import Parameters
+from app.schemas.renewals import Parameters as RenewalParameters
 
 Reasoning = Literal["low", "medium", "high"]
+Case = Literal["factory_order", "renewals"]
 
 
 class AgentStatus(BaseModel):
@@ -24,18 +28,27 @@ class ModelChoice(BaseModel):
     reasoning: Reasoning | None = None
 
 
+class ChatContext(BaseModel):
+    """Lo que el asistente sabe de la pantalla: el caso y, según el caso, los supuestos en pantalla (y el día y el
+    gestor de la cola). None = valores por defecto."""
+
+    case: Case = "factory_order"
+    parameters: Parameters | None = None
+    renewal_parameters: RenewalParameters | None = None
+    day: date | None = None
+    agent: str | None = Field(None, max_length=8)
+
+
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=8000)
 
 
-class ChatRequest(ModelChoice):
+class ChatRequest(ModelChoice, ChatContext):
     # Identifica la conversación en el servidor (checkpointer en memoria de LangGraph, necesario para las
     # aprobaciones). Lo genera el frontend y se borra al salir del chat.
     thread_id: str = Field(min_length=4, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     messages: list[ChatMessage] = Field(min_length=1, max_length=40)
-    # Lo que el planificador tiene en pantalla; las herramientas parten de ahí. None = valores por defecto.
-    parameters: Parameters | None = None
 
 
 class Decision(BaseModel):
@@ -46,10 +59,9 @@ class Decision(BaseModel):
     edited_action: dict[str, Any] | None = None
 
 
-class ResumeRequest(ModelChoice):
+class ResumeRequest(ModelChoice, ChatContext):
     thread_id: str = Field(min_length=4, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
     decisions: list[Decision] = Field(min_length=1, max_length=10)
-    parameters: Parameters | None = None
 
 
 # Eventos del stream (SSE, uno por línea `data:`). El frontend los replica en types.ts.
@@ -71,16 +83,31 @@ class ToolResultEvent(BaseModel):
 
 
 class ActionEvent(BaseModel):
-    """Acción que el frontend ejecuta: cambiar los supuestos en pantalla, abrir una sección, descargar un CSV o
-    refrescar los planes guardados."""
+    """Acción que el frontend ejecuta: cambiar los supuestos en pantalla, abrir una sección, descargar un CSV,
+    refrescar los planes guardados; en el Caso 2, cambiar el día de la cola o recargarla tras un registro."""
 
     type: Literal["action"] = "action"
-    action: Literal["set_parameters", "navigate", "download_csv", "plans_changed"]
+    action: Literal[
+        "set_parameters",
+        "navigate",
+        "download_csv",
+        "plans_changed",
+        "set_renewal_parameters",
+        "set_day",
+        "contact_logged",
+        "download_queue_csv",
+    ]
     parameters: Parameters | None = None
     path: str | None = None
     table: Literal["model", "version"] | None = None
     plan_id: str | None = None
     plan_name: str | None = None
+    renewal_parameters: RenewalParameters | None = None
+    day: date | None = None
+    contact_id: str | None = None
+    policy: str | None = None
+    agent: str | None = None
+    pending_only: bool | None = None
 
 
 class ActionRequest(BaseModel):

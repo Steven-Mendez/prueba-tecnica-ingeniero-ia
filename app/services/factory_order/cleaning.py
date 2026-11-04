@@ -4,15 +4,14 @@ Aplica los mismos supuestos (S1.1–S1.6, S1.11) y devuelve la base limpia junto
 Donde el notebook se detiene con un `assert`, aquí se lanza `DataError` con un mensaje para el usuario.
 """
 
-import io
 import re
 import unicodedata
-import zipfile
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+from app.services.common.excel import read_excel  # noqa: F401 - la lectura es común a los dos casos
 from app.services.factory_order.base import (
     CleanBase,
     CleaningChange,
@@ -99,22 +98,6 @@ NUMERIC_COLUMNS = {
         "Costo financiero mensual por unidad (USD)",
     ],
 }
-
-
-def read_excel(source: bytes | Path) -> dict[str, pd.DataFrame]:
-    """Lee todas las hojas. Lanza DataError si el archivo no es un .xlsx legible."""
-    if isinstance(source, bytes):
-        if not source.startswith(b"PK"):
-            raise DataError("El archivo no es un Excel .xlsx válido.")
-        buffer: io.BytesIO | Path = io.BytesIO(source)
-    else:
-        if not source.is_file():
-            raise DataError(f"No existe el archivo {source}.", status_code=404)
-        buffer = source
-    try:
-        return pd.read_excel(buffer, sheet_name=None)
-    except (ValueError, KeyError, OSError, zipfile.BadZipFile) as exc:
-        raise DataError(f"No se pudo leer el Excel: {exc}") from None
 
 
 def strip_accents(s: str) -> str:

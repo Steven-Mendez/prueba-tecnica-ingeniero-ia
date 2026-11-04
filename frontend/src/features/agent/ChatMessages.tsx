@@ -8,36 +8,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { cn } from '@/lib/utils'
 import { AgentChart } from './AgentChart'
 import { agent } from './agentStore'
+import { APPROVAL_LABELS, STEP_LABELS, argLabel } from './labels'
 import type { Approval, ChatTurn, ToolStep } from './types'
-
-// Qué hizo el asistente, en palabras (los nombres de las herramientas están en app/services/agent/tools.py)
-const STEP_LABELS: Record<string, string> = {
-  contexto: 'Leyó qué hay en pantalla',
-  calcular_pedido: 'Calculó un escenario',
-  aplicar_supuestos: 'Cambió los supuestos',
-  restablecer_supuestos: 'Restableció los supuestos',
-  explicar_modelo: 'Revisó un modelo',
-  sensibilidad: 'Consultó la sensibilidad',
-  precision: 'Consultó el seguimiento',
-  ventas: 'Consultó las ventas',
-  consultar_hoja: 'Consultó una hoja de datos',
-  listar_planes: 'Consultó los planes guardados',
-  guardar_plan: 'Guardó el plan',
-  cambiar_estado_plan: 'Cambió el estado de un plan',
-  borrar_plan: 'Borró un plan',
-  exportar_csv: 'Exportó un CSV',
-  mostrar: 'Abrió una sección',
-  grafico: 'Dibujó un gráfico',
-}
-
-const APPROVAL_LABELS: Record<string, string> = {
-  guardar_plan: 'Guardar el plan',
-  cambiar_estado_plan: 'Cambiar el estado del plan',
-  borrar_plan: 'Borrar el plan',
-}
-
-const argLabel = (key: string) =>
-  ({ nombre: 'Nombre', nota: 'Nota', plan_id: 'Plan', estado: 'Estado' })[key] ?? key
 
 // Texto del asistente: párrafos, viñetas, tablas y **negritas**; suficiente sin una librería de Markdown
 export function Rich({ text, className }: { text: string; className?: string }) {

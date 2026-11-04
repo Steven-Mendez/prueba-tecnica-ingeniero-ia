@@ -12,13 +12,14 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { fetchSheet } from '@/lib/api'
+import { fetchSheet as fetchCaso1Sheet } from '@/lib/api'
 import { date, num0, num2, usd } from '@/lib/format'
 import { useApi } from '@/hooks/useApi'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
-import type { Column, SheetInfo, SheetPage, SheetQuery } from './types'
+import type { Column, SheetFetcher, SheetInfo, SheetPage, SheetQuery } from './types'
 
 const ALL = '__all__'
+const ALL_LABEL: Record<string, string> = { Modelo: 'Todos los modelos', Gestor: 'Todos los gestores' }
 
 function Cell({ column, value }: { column: Column; value: unknown }) {
   if (value == null || value === '') return <span className="text-muted-foreground/60">—</span>
@@ -42,7 +43,7 @@ function Cell({ column, value }: { column: Column; value: unknown }) {
   }
 }
 
-export function SheetExplorer({ info, version }: { info: SheetInfo; version: string | null }) {
+export function SheetExplorer({ info, version, fetchSheet = fetchCaso1Sheet }: { info: SheetInfo; version: string | null; fetchSheet?: SheetFetcher }) {
   const [query, setQuery] = useState<SheetQuery>({
     page: 1,
     page_size: 50,
@@ -109,11 +110,11 @@ export function SheetExplorer({ info, version }: { info: SheetInfo; version: str
         </InputGroup>
         {data?.model_column && (
           <Select value={query.model ?? ALL} onValueChange={(v) => set({ model: v === ALL ? null : v })}>
-            <SelectTrigger className="w-44" aria-label="Modelo">
+            <SelectTrigger className="w-44" aria-label={data.filter_label}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value={ALL}>Todos los modelos</SelectItem>
+              <SelectItem value={ALL}>{ALL_LABEL[data.filter_label] ?? `Todos (${data.filter_label.toLowerCase()})`}</SelectItem>
               {data.models.map((m) => (
                 <SelectItem key={m} value={m}>
                   {m}

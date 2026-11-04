@@ -1,7 +1,7 @@
 // Cliente de la API. Rutas relativas: en desarrollo las atiende el proxy de Vite y en producción el mismo FastAPI.
 // La app solo lee la fuente de datos (en el prototipo, el Excel del caso); no sube archivos.
 import type { AgentEvent, AgentStatus, ChatRequest, ResumeRequest } from '@/features/agent/types'
-import type { DataStatus, SheetPage, SheetQuery } from '@/features/data/types'
+import type { DataStatus, RenewalsDataStatus, SheetPage, SheetQuery } from '@/features/data/types'
 import type {
   Accuracy,
   CalculationResult,
@@ -10,6 +10,17 @@ import type {
   Plan,
   PlanStatus,
 } from '@/features/factory-order/types'
+import type {
+  Contact,
+  ContactCreate,
+  DailyQueue,
+  DayOverview,
+  NotebookQueue,
+  ParameterDefaults as RenewalParameterDefaults,
+  Parameters as RenewalParameters,
+  PolicyDetail,
+  SimulationResult,
+} from '@/features/renewals/types'
 import type { SalesOverview, SalesQuery } from '@/features/sales/types'
 
 // FastAPI devuelve `detail` como texto (errores propios) o como lista de errores de validación (422)
@@ -66,21 +77,21 @@ function query(params: Record<string, string | number | boolean | string[] | nul
 
 export const fetchDataStatus = (signal?: AbortSignal) => request<DataStatus>('/api/data/status', { signal })
 
+const sheetQuery = (q: SheetQuery) =>
+  query({
+    page: q.page,
+    page_size: q.page_size,
+    q: q.q,
+    model: q.model,
+    date_from: q.date_from,
+    date_to: q.date_to,
+    flag: q.flag,
+    sort: q.sort,
+    desc: q.desc,
+  })
+
 export const fetchSheet = (key: string, q: SheetQuery, signal?: AbortSignal) =>
-  request<SheetPage>(
-    `/api/data/sheets/${key}${query({
-      page: q.page,
-      page_size: q.page_size,
-      q: q.q,
-      model: q.model,
-      date_from: q.date_from,
-      date_to: q.date_to,
-      flag: q.flag,
-      sort: q.sort,
-      desc: q.desc,
-    })}`,
-    { signal },
-  )
+  request<SheetPage>(`/api/data/sheets/${key}${sheetQuery(q)}`, { signal })
 
 // Ventas ------------------------------------------------------------------------------------------------------
 
@@ -109,23 +120,23 @@ export const updatePlan = (id: string, patch: { name?: string; note?: string; st
 
 export const deletePlan = (id: string) => request<void>(`${PLANNER}/plans/${id}`, { method: 'DELETE' })
 
-// Descarga un CSV calculado con los parámetros actuales; el nombre sale de Content-Disposition
-export async function downloadCsv(table: 'model' | 'version', parameters: Parameters) {
-  const res = await fetch(`${PLANNER}/export/${table}`, {
+// Descarga un archivo calculado con un cuerpo JSON; el nombre sale de Content-Disposition
+async function downloadFile(path: string, body: unknown, fallbackName: string) {
+  const res = await fetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(parameters),
+    body: JSON.stringify(body),
   })
   if (!res.ok) {
-    let body: unknown = null
+    let payload: unknown = null
     try {
-      body = await res.json()
+      payload = await res.json()
     } catch {
       // sin JSON
     }
-    throw new Error(errorDetail(body, `${res.status} ${res.statusText}`))
+    throw new Error(errorDetail(payload, `${res.status} ${res.statusText}`))
   }
-  const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? `pedido_${table}.csv`
+  const name = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') ?? '')?.[1] ?? fallbackName
   const url = URL.createObjectURL(await res.blob())
   const a = document.createElement('a')
   a.href = url
@@ -134,6 +145,47 @@ export async function downloadCsv(table: 'model' | 'version', parameters: Parame
   URL.revokeObjectURL(url)
   return name
 }
+
+// Descarga un CSV del pedido calculado con los parámetros actuales
+export const downloadCsv = (table: 'model' | 'version', parameters: Parameters) =>
+  downloadFile(`${PLANNER}/export/${table}`, parameters, `pedido_${table}.csv`)
+
+// Caso 2 · Renovaciones ---------------------------------------------------------------------------------------
+
+const RENEWALS = '/api/renewals'
+
+export const fetchRenewalsStatus = (signal?: AbortSignal) =>
+  request<RenewalsDataStatus>(`${RENEWALS}/data/status`, { signal })
+
+export const fetchRenewalsSheet = (key: string, q: SheetQuery, signal?: AbortSignal) =>
+  request<SheetPage>(`${RENEWALS}/data/sheets/${key}${sheetQuery(q)}`, { signal })
+
+export const fetchRenewalDefaults = (signal?: AbortSignal) =>
+  request<RenewalParameterDefaults>(`${RENEWALS}/parameters`, { signal })
+
+export const simulateRenewals = (parameters: RenewalParameters | string, signal?: AbortSignal) =>
+  sendJson<SimulationResult>('POST', `${RENEWALS}/simulate`, parameters, signal)
+
+export const fetchDayOverview = (parameters: RenewalParameters, day: string, signal?: AbortSignal) =>
+  sendJson<DayOverview>('POST', `${RENEWALS}/day${query({ day })}`, parameters, signal)
+
+export const fetchDailyQueue = (parameters: RenewalParameters, day: string, agent: string | null, signal?: AbortSignal) =>
+  sendJson<DailyQueue>('POST', `${RENEWALS}/queue${query({ day, agent })}`, parameters, signal)
+
+export const fetchPolicy = (policy: string, parameters: RenewalParameters, day: string, signal?: AbortSignal) =>
+  sendJson<PolicyDetail>('POST', `${RENEWALS}/policies/${encodeURIComponent(policy)}${query({ day })}`, parameters, signal)
+
+export const fetchContacts = (q: { day?: string; agent?: string; policy?: string }, signal?: AbortSignal) =>
+  request<Contact[]>(`${RENEWALS}/contacts${query(q)}`, { signal })
+
+export const createContact = (body: ContactCreate) => sendJson<Contact>('POST', `${RENEWALS}/contacts`, body)
+
+export const deleteContact = (id: string) => request<void>(`${RENEWALS}/contacts/${id}`, { method: 'DELETE' })
+
+export const fetchNotebookQueue = (signal?: AbortSignal) => request<NotebookQueue>(`${RENEWALS}/notebook-queue`, { signal })
+
+export const downloadQueueCsv = (parameters: RenewalParameters, day: string, pendingOnly = false) =>
+  downloadFile(`${RENEWALS}/queue/export${query({ day, pending_only: pendingOnly })}`, parameters, `cola_renovaciones_${day}.csv`)
 
 // Asistente ---------------------------------------------------------------------------------------------------
 

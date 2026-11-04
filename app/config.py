@@ -19,18 +19,22 @@ AGENT_DEFAULT_MODELS = {p: m[0] for p, m in AGENT_MODEL_OPTIONS.items()}
 
 
 class Settings(BaseSettings):
-    app_name: str = "Planificador de pedidos · Casa Pellas"
+    app_name: str = "Prototipos · Casa Pellas"
     # Rutas relativas a la raíz del proyecto. Cada archivo que lea la API debe incluirse en el deploy
     # (ver .fastapicloudignore).
-    # Fuente de datos del Caso 1. En este prototipo es el Excel del caso, que no cambia: se lee una vez al arrancar.
-    # En producción la alimentarían procesos de ETL; con DATA_CHECK_SECONDS la app revisaría cada tanto si hay una
-    # versión nueva y la volvería a cargar.
+    # Fuentes de datos de los dos casos. En este prototipo son los Excel de cada caso, que no cambian: se leen una
+    # vez al arrancar. En producción las alimentarían procesos de ETL; con DATA_CHECK_SECONDS la app revisaría cada
+    # tanto si hay una versión nueva y la volvería a cargar.
     factory_order_excel: Path = Path("data/raw/caso1_vehiculos_nuevos.xlsx")
+    renewals_excel: Path = Path("data/raw/caso2_renovaciones.xlsx")
     data_check_seconds: float | None = None
-    # CSV que exporta el notebook: con los datos originales y los valores por defecto, la app debe coincidir
+    # CSV que exportan los notebooks: con los datos originales y los valores por defecto, la app debe coincidir
     notebook_order_csv: Path = Path("outputs/pedido_2026-10_por_modelo.csv")
-    # Planes guardados por el planificador (un JSON por plan)
+    renewals_notebook_csv: Path = Path("outputs/cola_renovaciones_2026-09-15.csv")
+    # Planes guardados por el planificador (un JSON por plan) y resultados de llamada registrados desde la cola
+    # de renovaciones (un JSON por registro)
     plans_dir: Path = Path("data/plans")
+    contact_log_dir: Path = Path("data/contact_log")
     # Asistente (agente LangChain sobre el planificador). Funciona con OpenAI o con Anthropic: se usa el proveedor
     # que tenga clave (si hay las dos, AGENT_PROVIDER decide). Sin clave, el chat no se muestra y el resto de la app
     # funciona igual. En FastAPI Cloud las claves van en el panel de variables de entorno, nunca en el código.

@@ -8,12 +8,13 @@ import { navigate } from '@/hooks/useHashRoute'
 import { agent, useAgentState } from './agentStore'
 import { Turn } from './ChatMessages'
 import { Composer } from './Composer'
-import { SUGGESTIONS } from './suggestions'
+import { AGENT_COPY } from './suggestions'
 
 // Panel lateral del asistente: la misma conversación que la pantalla de chat, acoplada a la derecha para que el
 // planificador vea en pantalla lo que el agente cambia o abre. Cerrarlo termina la conversación.
 export function AgentPanel({ hidden = false }: { hidden?: boolean }) {
-  const { open, status, turns, busy } = useAgentState()
+  const { open, status, turns, busy, case: caseId } = useAgentState()
+  const copy = AGENT_COPY[caseId]
   const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -33,7 +34,7 @@ export function AgentPanel({ hidden = false }: { hidden?: boolean }) {
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold">Asistente</div>
           <div className="truncate text-xs text-muted-foreground">
-            {status?.enabled ? `Agente sobre el planificador · ${status.model}` : 'Sin proveedor configurado'}
+            {status?.enabled ? `${copy.subtitle} · ${status.model}` : 'Sin proveedor configurado'}
           </div>
         </div>
         <Tooltip>
@@ -70,13 +71,9 @@ export function AgentPanel({ hidden = false }: { hidden?: boolean }) {
       <div ref={listRef} className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
         {turns.length === 0 ? (
           <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              Pregunta por el pedido, los supuestos, las ventas o el seguimiento. El asistente usa las mismas
-              herramientas que la pantalla: no calcula por su cuenta, consulta el motor y te lo explica. Puede
-              cambiar los supuestos que ves, abrir secciones y guardar el plan con tu aprobación.
-            </p>
+            <p className="text-sm text-muted-foreground">{copy.panelIntro}</p>
             <div className="flex flex-wrap gap-1.5">
-              {SUGGESTIONS.map((s) => (
+              {copy.suggestions.map((s) => (
                 <Button key={s.title} variant="outline" size="xs" className="h-auto py-1 text-left whitespace-normal" onClick={() => void agent.send(s.title)} disabled={!status?.enabled || busy}>
                   {s.title}
                 </Button>

@@ -1,5 +1,6 @@
 """Rutas del asistente: estado (proveedor, modelos), chat en streaming (SSE), reanudar tras una aprobación y
-olvidar una conversación."""
+olvidar una conversación. El cuerpo dice sobre qué caso conversa (`case`): el planificador del Caso 1 o la cola
+de renovaciones del Caso 2; cada uno tiene sus herramientas y su prompt."""
 
 import json
 from collections.abc import AsyncIterator, Callable
@@ -10,11 +11,16 @@ from fastapi.responses import StreamingResponse
 from langchain_core.language_models import BaseChatModel
 
 from app.config import Settings, get_settings
-from app.routers.factory_order import Dataset, Plans
-from app.schemas.agent import AgentStatus, ChatRequest, ModelChoice, Reasoning, ResumeRequest
+from app.routers import factory_order as factory_order_router
+from app.routers import renewals as renewals_router
+from app.schemas.agent import AgentStatus, ChatContext, ChatRequest, ModelChoice, Reasoning, ResumeRequest
 from app.schemas.factory_order import Parameters
-from app.services.agent import runner
-from app.services.agent.tools import ToolContext
+from app.schemas.renewals import Parameters as RenewalParameters
+from app.services.agent import renewals_tools, runner, tools
+from app.services.agent.common_tools import AgentSpec
+from app.services.factory_order import plans
+from app.services.renewals import calculation as renewals_calculation
+from app.services.renewals.contact_log import ContactLogStore
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -58,6 +64,29 @@ def model_factory(settings: Annotated[Settings, Depends(get_settings)]) -> Model
 Factory = Annotated[ModelFactory, Depends(model_factory)]
 
 
+def build_spec(body: ChatContext, settings: Settings) -> AgentSpec:
+    """Las herramientas y el prompt del caso sobre el que se conversa. Cada fuente se carga aquí, dentro del
+    endpoint, para que un Excel ausente de un caso no rompa el chat del otro."""
+    if body.case == "renewals":
+        dataset = renewals_router.current_dataset()
+        store = ContactLogStore(settings.resolve(settings.contact_log_dir))
+        day = body.day or renewals_calculation.derived(dataset).default_day
+        ctx = renewals_tools.RenewalsToolContext(
+            dataset=dataset,
+            parameters=body.renewal_parameters or RenewalParameters(),
+            day=day,
+            agent=body.agent,
+            contacts=store,
+        )
+        return renewals_tools.spec(ctx)
+    dataset = factory_order_router.current_dataset()
+    plan_store = plans.PlanStore(settings.resolve(settings.plans_dir))
+    ctx = tools.ToolContext(
+        dataset=dataset, parameters=body.parameters or Parameters(), plans=plan_store.list(), store=plan_store
+    )
+    return tools.spec(ctx)
+
+
 def _sse(events: AsyncIterator[dict]) -> StreamingResponse:
     async def body():
         async for event in events:
@@ -87,22 +116,18 @@ _SSE_RESPONSES = {
 
 
 @router.post("/chat", response_class=StreamingResponse, responses=_SSE_RESPONSES)
-def chat(body: ChatRequest, factory: Factory, dataset: Dataset, store: Plans):
-    """Una vuelta de conversación. El cuerpo trae el historial (texto) y los supuestos en pantalla. Si el agente
-    se detiene en una acción que requiere aprobación, el stream termina con un evento `interrupt`."""
-    ctx = ToolContext(
-        dataset=dataset, parameters=body.parameters or Parameters(), plans=store.list(), store=store
-    )
-    return _sse(runner.stream_chat(factory(body), ctx, body.thread_id, body.messages))
+def chat(body: ChatRequest, factory: Factory, settings: Annotated[Settings, Depends(get_settings)]):
+    """Una vuelta de conversación. El cuerpo trae el historial (texto), el caso y lo que hay en pantalla. Si el
+    agente se detiene en una acción que requiere aprobación, el stream termina con un evento `interrupt`."""
+    spec = build_spec(body, settings)
+    return _sse(runner.stream_chat(factory(body), spec, body.thread_id, body.messages))
 
 
 @router.post("/resume", response_class=StreamingResponse, responses=_SSE_RESPONSES)
-def resume(body: ResumeRequest, factory: Factory, dataset: Dataset, store: Plans):
+def resume(body: ResumeRequest, factory: Factory, settings: Annotated[Settings, Depends(get_settings)]):
     """Continúa tras una aprobación: una decisión por acción pendiente, en el mismo orden."""
-    ctx = ToolContext(
-        dataset=dataset, parameters=body.parameters or Parameters(), plans=store.list(), store=store
-    )
-    return _sse(runner.resume_chat(factory(body), ctx, body.thread_id, body.decisions))
+    spec = build_spec(body, settings)
+    return _sse(runner.resume_chat(factory(body), spec, body.thread_id, body.decisions))
 
 
 @router.delete("/threads/{thread_id}", status_code=status.HTTP_204_NO_CONTENT)

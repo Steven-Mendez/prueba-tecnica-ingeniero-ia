@@ -33,8 +33,8 @@ class SheetInfo(BaseModel):
     date_to: date | None
 
 
-class DataStatus(BaseModel):
-    """Estado de la fuente: qué versión del Excel del ETL se está usando y qué hizo la limpieza con ella."""
+class SourceStatusBase(BaseModel):
+    """Estado de una fuente: qué versión del Excel del ETL se está usando y qué hizo la limpieza con ella."""
 
     path: str
     file_name: str
@@ -49,16 +49,35 @@ class DataStatus(BaseModel):
         description="Última entrega del ETL rechazada; se sigue usando la versión buena"
     )
     last_error_at: datetime | None
-    data_cutoff: date
     period_start: date
     period_end: date
-    models: list[str]
     sheets: list[SheetInfo]
-    changes: list[CleaningChange]
     quality: list[QualityIssue]
+    warnings: list[str]
+
+
+class DataStatus(SourceStatusBase):
+    """Fuente del Caso 1 (pedido a fábrica)."""
+
+    data_cutoff: date
+    models: list[str]
+    changes: list[CleaningChange]
     reconciliation_differences: int
     reconciliation_cells: int
-    warnings: list[str]
+
+
+class RenewalsDataStatus(SourceStatusBase):
+    """Fuente del Caso 2 (renovaciones)."""
+
+    staffing_change_date: date = Field(description="Desde cuándo trabajan 5 gestores (salida de G06 y G07)")
+    policies: int = Field(description="Pólizas tras la limpieza")
+    calls: int = Field(description="Llamadas en la bitácora")
+    months: int = Field(description="Meses de vencimientos en la base")
+    duplicates_removed: int
+    invalid_phones: int
+    first_contact_filled: int
+    renewed_without_closing: int
+    late_first_contacts: int
 
 
 class Column(BaseModel):
@@ -78,4 +97,7 @@ class SheetPage(BaseModel):
     page_size: int
     model_column: str | None
     date_column: str | None
-    models: list[str]
+    models: list[str] = Field(
+        description="Valores del filtro principal (modelos en el Caso 1, gestores en el 2)"
+    )
+    filter_label: str = "Modelo"

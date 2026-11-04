@@ -86,7 +86,7 @@ export function PlansCard({ plans, onChanged, onOpen }: Props) {
               <EmptyDescription>Se guardan desde el planificador.</EmptyDescription>
             </EmptyHeader>
             <Button asChild size="sm">
-              <a href="#/planificador">Ir al planificador</a>
+              <a href="#/caso1/planificador">Ir al planificador</a>
             </Button>
           </Empty>
         ) : (

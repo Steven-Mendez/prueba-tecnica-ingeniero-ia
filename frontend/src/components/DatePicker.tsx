@@ -26,15 +26,20 @@ function toIso(d: Date): string {
 interface Bounds {
   min?: string | null
   max?: string | null
+  weekdaysOnly?: boolean // solo días hábiles (lunes a viernes)
 }
 
-function boundsProps({ min, max }: Bounds) {
+function boundsProps({ min, max, weekdaysOnly }: Bounds) {
   const start = fromIso(min)
   const end = fromIso(max)
   return {
     startMonth: start,
     endMonth: end,
-    disabled: [...(start ? [{ before: start }] : []), ...(end ? [{ after: end }] : [])],
+    disabled: [
+      ...(start ? [{ before: start }] : []),
+      ...(end ? [{ after: end }] : []),
+      ...(weekdaysOnly ? [{ dayOfWeek: [0, 6] }] : []),
+    ],
   }
 }
 
@@ -46,7 +51,7 @@ interface DatePickerProps extends Bounds {
   'aria-label'?: string
 }
 
-export function DatePicker({ value, onChange, min, max, id, className, ...rest }: DatePickerProps) {
+export function DatePicker({ value, onChange, min, max, weekdaysOnly, id, className, ...rest }: DatePickerProps) {
   const [open, setOpen] = useState(false)
   const selected = fromIso(value)
   return (
@@ -74,7 +79,7 @@ export function DatePicker({ value, onChange, min, max, id, className, ...rest }
             onChange(toIso(d))
             setOpen(false)
           }}
-          {...boundsProps({ min, max })}
+          {...boundsProps({ min, max, weekdaysOnly })}
         />
       </PopoverContent>
     </Popover>

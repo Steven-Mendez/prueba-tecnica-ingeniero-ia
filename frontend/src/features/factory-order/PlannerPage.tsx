@@ -1,5 +1,5 @@
 import { AlertCircle, Info, Loader2, RefreshCw, RotateCcw, X } from 'lucide-react'
-import { lazy, Suspense, useEffect, useState, type Dispatch, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useState, type Dispatch } from 'react'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -12,7 +12,7 @@ import { date, num0, num1 } from '@/lib/format'
 import { navigate } from '@/hooks/useHashRoute'
 import { readStorage, writeStorage } from '@/hooks/useLocalStorage'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
-import { Help } from '@/components/Term'
+import { Chip } from '@/components/Chip'
 import { G } from '@/lib/glossary'
 import { PageHeader } from '@/features/app/PageHeader'
 import { OrderSteps } from './order/OrderSteps'
@@ -40,16 +40,6 @@ function Loading() {
       <Skeleton className="h-28 rounded-xl" />
       <Skeleton className="h-96 rounded-xl" />
     </div>
-  )
-}
-
-function Chip({ label, value, help }: { label: string; value: ReactNode; help?: ReactNode }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium tabular-nums">{value}</span>
-      {help && <Help className="ml-0.5">{help}</Help>}
-    </span>
   )
 }
 
@@ -124,7 +114,7 @@ export function PlannerPage({ tab: routeTab, params, calc, changes }: Props) {
   return (
     <>
       <PageHeader
-        crumbs={[{ label: 'Planificación', href: '#/planificador' }, { label: 'Planificador de pedidos' }]}
+        crumbs={[{ label: 'Planificación', href: '#/caso1/planificador' }, { label: 'Planificador de pedidos' }]}
         actions={
           <>
             <span className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:inline-flex" aria-live="polite">

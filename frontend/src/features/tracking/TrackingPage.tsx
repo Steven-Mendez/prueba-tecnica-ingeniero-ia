@@ -60,7 +60,7 @@ export default function TrackingPage({ version, onOpenPlan, onApplyCorrection }:
 
   return (
     <>
-      <PageHeader crumbs={[{ label: 'Planificación', href: '#/planificador' }, { label: 'Seguimiento' }]} />
+      <PageHeader crumbs={[{ label: 'Planificación', href: '#/caso1/planificador' }, { label: 'Seguimiento' }]} />
       <div className="flex-1 space-y-4 p-4 md:p-6">
         <h1 className="text-2xl font-semibold tracking-tight">Seguimiento</h1>
 

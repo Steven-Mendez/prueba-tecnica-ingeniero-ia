@@ -4,53 +4,20 @@ El modelo de lenguaje se sustituye por uno falso con respuestas guionadas: aquí
 (herramientas, acciones para la UI, stream), no a Claude.
 """
 
-import json
-
 import pytest
-from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from langchain_core.messages import AIMessage, AIMessageChunk, ToolCall
-from langchain_core.outputs import ChatGenerationChunk
+from langchain_core.messages import AIMessage, ToolCall
 
 from app.main import app
 from app.routers.agent import model_factory
 from app.schemas.factory_order import Parameters
 from app.services.agent.tools import ToolContext, ToolError, build_tools
-
-API = "/api/agent"
-
-
-class ScriptedModel(GenericFakeChatModel):
-    """Modelo falso con respuestas guionadas que acepta herramientas y emite cada respuesta como un solo chunk
-    (el genérico no implementa bind_tools y no emite nada cuando el contenido es vacío)."""
-
-    def bind_tools(self, tools, **kwargs):
-        return self
-
-    def _stream(self, messages, stop=None, run_manager=None, **kwargs):
-        message = next(self.messages)
-        if isinstance(message, str):
-            message = AIMessage(content=message)
-        chunks = [
-            {
-                "name": tc["name"],
-                "args": json.dumps(tc["args"]),
-                "id": tc["id"],
-                "index": i,
-                "type": "tool_call_chunk",
-            }
-            for i, tc in enumerate(message.tool_calls)
-        ]
-        yield ChatGenerationChunk(message=AIMessageChunk(content=message.content, tool_call_chunks=chunks))
+from tests.fakes import API, ScriptedModel, call, read_events, scripted_events
 
 
 @pytest.fixture
 def tools(dataset):
     ctx = ToolContext(dataset=dataset, parameters=Parameters())
     return ctx, {t.name: t for t in build_tools(ctx)}
-
-
-def call(tools, name, **kwargs):
-    return json.loads(tools[name].invoke(kwargs))
 
 
 def test_context_and_order_match_notebook(tools):
@@ -135,12 +102,6 @@ def test_show_and_chart(tools):
     )
     assert chart["filas"] == 2 and ctx.charts[0]["data"][0] == {"modelo": "Hilux", "pedido": 42}
     assert ctx.actions[0] == {"action": "navigate", "path": "planificador/sensibilidad"}
-
-
-def read_events(response) -> list[dict]:
-    return [
-        json.loads(line[len("data: ") :]) for line in response.text.splitlines() if line.startswith("data: ")
-    ]
 
 
 def test_status_and_chat_without_key(client):
@@ -245,17 +206,9 @@ def test_plan_tools_and_export(dataset, tmp_path):
         t["borrar_plan"].invoke({"plan_id": plan_id})
 
 
-def _scripted(client, scripted, path, body):
-    app.dependency_overrides[model_factory] = lambda: lambda _choice: ScriptedModel(messages=iter(scripted))
-    try:
-        return read_events(client.post(f"{API}/{path}", json=body))
-    finally:
-        app.dependency_overrides.pop(model_factory, None)
-
-
 def test_saving_a_plan_requires_approval(client):
     thread = {"thread_id": "t-approve", "parameters": {}}
-    events = _scripted(
+    events = scripted_events(
         client,
         [
             AIMessage(
@@ -272,7 +225,7 @@ def test_saving_a_plan_requires_approval(client):
     assert pending[0]["name"] == "guardar_plan" and pending[0]["args"]["nombre"] == "Plan aprobado"
     assert client.get("/api/factory-order/plans").json() == []
 
-    events = _scripted(
+    events = scripted_events(
         client,
         [AIMessage(content="Plan guardado.")],
         "resume",
@@ -288,13 +241,13 @@ def test_saving_a_plan_requires_approval(client):
 
 def test_rejected_action_does_not_run(client):
     thread = {"thread_id": "t-reject", "parameters": {}}
-    _scripted(
+    scripted_events(
         client,
         [AIMessage(content="", tool_calls=[ToolCall(name="guardar_plan", args={"nombre": "No"}, id="c1")])],
         "chat",
         {**thread, "messages": [{"role": "user", "content": "Guarda el plan"}]},
     )
-    events = _scripted(
+    events = scripted_events(
         client,
         [AIMessage(content="Entendido, no lo guardo.")],
         "resume",
