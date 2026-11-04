@@ -22,3 +22,6 @@ outputs/*
 # frontend/: solo el build. dist/ está en .gitignore (raíz y frontend/), así que hay que reincluirlo.
 frontend/*
 !frontend/dist/
+
+# Capturas del README: no las usa la API
+docs/
