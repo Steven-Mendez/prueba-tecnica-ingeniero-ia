@@ -16,3 +16,8 @@ wheels/
 
 # Base limpia: la regeneran los notebooks 00_limpieza
 data/processed/
+
+# Configuración local (ver .env.example)
+.env
+# Planes guardados desde la app (se generan al usarla)
+data/plans/

@@ -1,0 +1,22 @@
+# Reglas para `fastapi deploy`. Se suman al .gitignore y tienen prioridad sobre él.
+# Solo se sube lo que necesita la app: app/, pyproject.toml, uv.lock, el build del frontend, el Excel del
+# Caso 1 (lo lee el motor) y los archivos de outputs/ que lee la API.
+
+# Análisis y tests: no los usa la API
+notebooks/
+tests/
+
+# data/: solo el Excel del Caso 1. Un archivo no se puede reincluir si su carpeta está excluida, por eso se
+# excluye el contenido (data/*) y no la carpeta.
+data/*
+!data/raw/
+data/raw/*
+!data/raw/caso1_vehiculos_nuevos.xlsx
+
+# outputs/: solo los CSV que lee la API (agregar aquí cada archivo nuevo que use un endpoint)
+outputs/*
+!outputs/pedido_2026-10_por_modelo.csv
+
+# frontend/: solo el build. dist/ está en .gitignore (raíz y frontend/), así que hay que reincluirlo.
+frontend/*
+!frontend/dist/
