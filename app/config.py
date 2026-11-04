@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -9,6 +10,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # así que da igual desde dónde se lance `fastapi dev` o cómo arranque FastAPI Cloud.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
+# Modelos que ofrece el selector del chat por proveedor (el primero es el de defecto); AGENT_MODELS los sustituye
+AGENT_MODEL_OPTIONS = {
+    "openai": ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5-mini"],
+    "anthropic": ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
+}
+AGENT_DEFAULT_MODELS = {p: m[0] for p, m in AGENT_MODEL_OPTIONS.items()}
 
 
 class Settings(BaseSettings):
@@ -24,6 +31,31 @@ class Settings(BaseSettings):
     notebook_order_csv: Path = Path("outputs/pedido_2026-10_por_modelo.csv")
     # Planes guardados por el planificador (un JSON por plan)
     plans_dir: Path = Path("data/plans")
+    # Asistente (agente LangChain sobre el planificador). Funciona con OpenAI o con Anthropic: se usa el proveedor
+    # que tenga clave (si hay las dos, AGENT_PROVIDER decide). Sin clave, el chat no se muestra y el resto de la app
+    # funciona igual. En FastAPI Cloud las claves van en el panel de variables de entorno, nunca en el código.
+    openai_api_key: str | None = None
+    anthropic_api_key: str | None = None
+    agent_provider: Literal["auto", "openai", "anthropic"] = "auto"
+    # Modelo por defecto del proveedor elegido (vacío = el primero de la lista) y lista del selector del chat
+    agent_model: str | None = None
+    agent_models: str | None = None
+
+    def agent_model_options(self, provider: str) -> list[str]:
+        custom = [m.strip() for m in (self.agent_models or "").split(",") if m.strip()]
+        options = custom or list(AGENT_MODEL_OPTIONS[provider])
+        default = self.agent_model or options[0]
+        return [default] + [m for m in options if m != default]
+
+    def agent_backend(self) -> tuple[str, str, str] | None:
+        """(proveedor, modelo, clave) del asistente, o None si no hay clave."""
+        keys = {"openai": self.openai_api_key, "anthropic": self.anthropic_api_key}
+        provider = self.agent_provider
+        if provider == "auto":
+            provider = next((name for name, key in keys.items() if key), None)
+        if not provider or not keys[provider]:
+            return None
+        return provider, self.agent_model_options(provider)[0], keys[provider]
 
     model_config = SettingsConfigDict(env_file=PROJECT_ROOT / ".env", env_file_encoding="utf-8")
 

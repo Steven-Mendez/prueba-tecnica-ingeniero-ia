@@ -161,6 +161,21 @@ a byte (lo verifican los tests). Secciones:
   tipo de cliente y flotas especiales.
 - **Datos.** Cada hoja de datos del Excel por separado y ya limpia (el Diccionario es documentación y no se
   muestra), con búsqueda, filtros, orden y paginación.
+- **Asistente.** Un agente (LangChain `create_agent`, bucle de herramientas de LangGraph) sobre el planificador,
+  en una pantalla de chat (`#/asistente`) y en un panel lateral disponible en todas las pantallas (icono ✦). No
+  calcula el pedido: sus herramientas (`app/services/agent/tools.py`) llaman al mismo motor que la pantalla y el
+  modelo resume en lenguaje de negocio. La funcionalidad principal se puede usar en lenguaje natural: la
+  pregunta del caso («¿cuál debería ser el pedido a fábrica de cada modelo para el próximo ciclo?») devuelve la
+  recomendación con la tabla por modelo; además lee el contexto, calcula escenarios sin tocar la pantalla,
+  cambia los supuestos en pantalla, explica un modelo, consulta la sensibilidad, el seguimiento, las ventas y
+  cada hoja de datos, dibuja gráficos con datos que obtuvo, abre secciones, exporta los CSV y gestiona los planes
+  guardados. **Human in the loop:** guardar, borrar o marcar como enviado un plan se detiene con un `interrupt`
+  de LangGraph y pide la aprobación del planificador en el chat antes de ejecutarse (`HumanInTheLoopMiddleware`
+  con un checkpointer en memoria por conversación). Es una demo: la conversación no se guarda; vive mientras el
+  chat está abierto y al salir se pierde y el servidor olvida el hilo. El chat tiene selector de modelo y de
+  esfuerzo de razonamiento. Funciona con OpenAI o con Anthropic según la clave configurada (`OPENAI_API_KEY` o
+  `ANTHROPIC_API_KEY`; `AGENT_PROVIDER`, `AGENT_MODEL` y `AGENT_MODELS` en `.env.example`); sin clave, el chat lo
+  indica y el resto de la app funciona igual.
 
 | Ruta | Qué hace |
 |---|---|
@@ -175,13 +190,17 @@ a byte (lo verifican los tests). Secciones:
 | `GET /api/factory-order/accuracy` | Precisión del pronóstico en los ciclos cerrados y corrección aprendida |
 | `GET`, `POST /api/factory-order/plans` · `GET`, `PATCH`, `DELETE /api/factory-order/plans/{id}` | Planes guardados con su seguimiento |
 | `GET /api/factory-order/notebook-order` | El pedido tal como lo exportó el notebook (referencia) |
+| `GET /api/agent/status` | Proveedor, modelo por defecto y modelos del selector del asistente |
+| `POST /api/agent/chat` | Una vuelta del asistente en streaming (SSE): texto, herramientas, acciones sobre la UI, gráficos y aprobaciones pendientes |
+| `POST /api/agent/resume` | Continúa tras una aprobación (human in the loop) con la decisión de la persona |
+| `DELETE /api/agent/threads/{id}` | Olvida la conversación en el servidor (al salir del chat) |
 | `/api/docs` | Documentación interactiva (OpenAPI) |
 | `/` | Frontend compilado (`frontend/dist/`) |
 
 ```
 app/main.py                          crea la app, monta los routers bajo /api y sirve frontend/dist
 app/config.py                        Settings (pydantic-settings, lee .env) y rutas relativas a la raíz del repo
-app/routers/                         data.py (fuente y hojas), sales.py, factory_order.py (planificador)
+app/routers/                         data.py (fuente y hojas), sales.py, factory_order.py (planificador), agent.py
 app/schemas/                         modelos Pydantic (frontend/src/features/*/types.ts los replican)
 app/services/factory_order/
   source.py                          fuente de datos: lee el Excel (y en producción recargaría lo que deje el ETL)
@@ -192,7 +211,10 @@ app/services/factory_order/
   tracking.py                        ciclos pasados: precisión del pronóstico y corrección aprendida
   plans.py                           planes guardados (un JSON por plan en PLANS_DIR) y su seguimiento
   explorer.py, sales.py              hojas por separado y tablero de ventas
-frontend/src/features/               app (sidebar), factory-order (planificador), tracking, sales, data
+app/services/agent/
+  tools.py                           herramientas del asistente: envuelven calculation, tracking, sales y explorer
+  runner.py                          el agente (create_agent de LangChain), su prompt, aprobaciones y el stream de eventos
+frontend/src/features/               app (sidebar), factory-order (planificador), tracking, sales, data, agent (chat)
 ```
 
 El código está en inglés; comentarios, documentación e interfaz en español. Para agregar un endpoint: el modelo
@@ -214,7 +236,7 @@ Requisitos adicionales: Node.js 20.19+ (o 22.12+).
 ```bash
 uv sync                          # dependencias de la API
 cd frontend && npm install && cd ..
-cp .env.example .env             # opcional: todos los valores tienen default
+cp .env.example .env             # opcional: todos los valores tienen default; aquí va la clave del asistente
 
 # terminal 1: API con recarga en http://localhost:8000 (el entrypoint está en [tool.fastapi] de pyproject.toml)
 uv run fastapi dev
@@ -250,7 +272,7 @@ publicar una página vacía. Las variables de `.env.example` se configuran en el
 ## Calidad
 
 ```bash
-uv run pytest                    # el motor reproduce los CSV del notebook; API, subida y validaciones
+uv run pytest                    # el motor reproduce los CSV del notebook; API, asistente (con modelo falso) y validaciones
 uv run ruff check notebooks app tests && uv run ruff format --check notebooks app tests
 cd frontend && npm run lint && npm run build
 ```
@@ -267,7 +289,10 @@ el texto contra las tablas calculadas, lint). El método (el ciclo de vida del a
 decisiones de análisis (qué supuestos tomar, cómo corregir la demanda censurada, la economía del stock de
 seguridad, el enrutamiento por canal y las reglas de la cola) son míos y están documentados como supuestos
 `S1.x` y `S2.x` en la celda donde se aplican. La app web del Caso 1 (motor, API y pantalla) también se
-escribió con Claude Code a partir de los notebooks; su validación es el último punto de la lista.
+escribió con Claude Code a partir de los notebooks; su validación es el último punto de la lista. El asistente
+de la app es la pieza de IA del sistema y trabaja alrededor del cálculo, no en su lugar: sus herramientas llaman
+al motor determinista y sus tests usan un modelo de lenguaje falso con respuestas guionadas, de modo que lo que
+se comprueba es el cableado (herramientas, acciones sobre la UI, stream), no al proveedor.
 
 Nada de lo que devolvió la IA se aceptó sin comprobarlo:
 

@@ -1,5 +1,6 @@
 // Cliente de la API. Rutas relativas: en desarrollo las atiende el proxy de Vite y en producción el mismo FastAPI.
 // La app solo lee la fuente de datos (en el prototipo, el Excel del caso); no sube archivos.
+import type { AgentEvent, AgentStatus, ChatRequest, ResumeRequest } from '@/features/agent/types'
 import type { DataStatus, SheetPage, SheetQuery } from '@/features/data/types'
 import type {
   Accuracy,
@@ -132,4 +133,54 @@ export async function downloadCsv(table: 'model' | 'version', parameters: Parame
   a.click()
   URL.revokeObjectURL(url)
   return name
+}
+
+// Asistente ---------------------------------------------------------------------------------------------------
+
+export const fetchAgentStatus = (signal?: AbortSignal) => request<AgentStatus>('/api/agent/status', { signal })
+
+export const forgetAgentThread = (threadId: string) =>
+  fetch(`/api/agent/threads/${threadId}`, { method: 'DELETE', keepalive: true }).catch(() => undefined)
+
+// Una vuelta del chat en streaming (SSE): cada línea `data:` es un evento. Resuelve cuando llega `done`.
+export const streamAgentChat = (body: ChatRequest, onEvent: (event: AgentEvent) => void, signal?: AbortSignal) =>
+  streamAgent('/api/agent/chat', body, onEvent, signal)
+
+// Continúa tras una aprobación (human in the loop)
+export const resumeAgentChat = (body: ResumeRequest, onEvent: (event: AgentEvent) => void, signal?: AbortSignal) =>
+  streamAgent('/api/agent/resume', body, onEvent, signal)
+
+async function streamAgent(path: string, body: unknown, onEvent: (event: AgentEvent) => void, signal?: AbortSignal) {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    body: JSON.stringify(body),
+    signal,
+  })
+  if (!res.ok || !res.body) {
+    let payload: unknown = null
+    try {
+      payload = await res.json()
+    } catch {
+      // sin JSON
+    }
+    throw new Error(errorDetail(payload, `${res.status} ${res.statusText}`))
+  }
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let cut = buffer.indexOf('\n\n')
+    while (cut >= 0) {
+      const frame = buffer.slice(0, cut)
+      buffer = buffer.slice(cut + 2)
+      for (const line of frame.split('\n')) {
+        if (line.startsWith('data: ')) onEvent(JSON.parse(line.slice(6)) as AgentEvent)
+      }
+      cut = buffer.indexOf('\n\n')
+    }
+  }
 }

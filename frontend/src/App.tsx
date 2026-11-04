@@ -4,6 +4,8 @@ import { toast } from 'sonner'
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { navigate, useHashRoute } from '@/hooks/useHashRoute'
+import { AgentPanel } from '@/features/agent/AgentPanel'
+import { agent } from '@/features/agent/agentStore'
 import { AppSidebar } from '@/features/app/AppSidebar'
 import { continueTour, tourFinished } from '@/features/app/tour'
 import { useDataStatus } from '@/features/app/useDataStatus'
@@ -19,6 +21,7 @@ const SalesPage = lazy(() => import('@/features/sales/SalesPage'))
 const DataPage = lazy(() => import('@/features/data/DataPage'))
 const TrackingPage = lazy(() => import('@/features/tracking/TrackingPage'))
 const HomePage = lazy(() => import('@/features/home/HomePage'))
+const ChatPage = lazy(() => import('@/features/agent/ChatPage'))
 
 function PageLoading() {
   return (
@@ -47,6 +50,17 @@ export default function App() {
     sub = section
     section = 'planificador'
   }
+
+  // El asistente lee los supuestos en pantalla y puede cambiarlos; su estado del proveedor se consulta una vez
+  const { dispatch: dispatchParams } = params
+  useEffect(() => {
+    agent.link({ parameters: current, dispatch: dispatchParams })
+  }, [current, dispatchParams])
+  useEffect(() => {
+    const ctrl = new AbortController()
+    void agent.loadStatus(ctrl.signal)
+    return () => ctrl.abort()
+  }, [])
 
   // Recorrido guiado: retoma el capítulo pendiente al entrar en su sección y confirma al guardar el pedido final
   useEffect(() => {
@@ -86,6 +100,8 @@ export default function App() {
             <SalesPage version={data.version} />
           ) : section === 'datos' ? (
             <DataPage sheet={sub} status={data.status} version={data.version} />
+          ) : section === 'asistente' ? (
+            <ChatPage />
           ) : section === 'seguimiento' ? (
             <TrackingPage version={data.version} onOpenPlan={openPlan} onApplyCorrection={applyCorrection} />
           ) : (
@@ -93,6 +109,7 @@ export default function App() {
           )}
         </Suspense>
       </SidebarInset>
+      <AgentPanel hidden={section === 'asistente'} />
     </SidebarProvider>
   )
 }

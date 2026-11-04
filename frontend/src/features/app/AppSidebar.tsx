@@ -1,4 +1,4 @@
-import { ClipboardList, FileSpreadsheet, Home, Target, TrendingUp } from 'lucide-react'
+import { ClipboardList, FileSpreadsheet, Home, Sparkles, Target, TrendingUp } from 'lucide-react'
 
 import {
   Sidebar,
@@ -35,7 +35,10 @@ const NAV = [
   },
   {
     label: 'Análisis',
-    items: [{ section: 'ventas', title: 'Ventas', icon: TrendingUp, hint: 'Ventas, pérdidas y tendencias' }],
+    items: [
+      { section: 'ventas', title: 'Ventas', icon: TrendingUp, hint: 'Ventas, pérdidas y tendencias' },
+      { section: 'asistente', title: 'Asistente', icon: Sparkles, hint: 'Pregunta, compara escenarios, pide gráficos' },
+    ],
   },
 ] as const
 

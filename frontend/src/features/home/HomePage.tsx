@@ -1,4 +1,4 @@
-import { ArrowRight, ClipboardList, Compass, FileSpreadsheet, Target, TrendingUp } from 'lucide-react'
+import { ArrowRight, ClipboardList, Compass, FileSpreadsheet, Sparkles, Target, TrendingUp } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -31,6 +31,12 @@ const SECTIONS = [
     icon: FileSpreadsheet,
     title: 'Datos',
     text: 'Cada hoja del Excel del caso, ya limpia, con búsqueda y filtros.',
+  },
+  {
+    href: '#/asistente',
+    icon: Sparkles,
+    title: 'Asistente',
+    text: 'Pregunta en lenguaje natural: el agente consulta el motor, compara escenarios, grafica y cambia los supuestos.',
   },
 ]
 

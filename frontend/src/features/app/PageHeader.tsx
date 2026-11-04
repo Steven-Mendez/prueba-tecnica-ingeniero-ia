@@ -1,11 +1,12 @@
 import { Fragment, type ReactNode } from 'react'
 
-import { CircleHelp } from 'lucide-react'
+import { CircleHelp, Sparkles } from 'lucide-react'
 
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { startTour } from './tour'
+import { agent, useAgentState } from '@/features/agent/agentStore'
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -24,6 +25,7 @@ export interface Crumb {
 
 // Encabezado de cada página dentro del inset: abrir/cerrar el sidebar, migas y acciones de la página
 export function PageHeader({ crumbs, actions }: { crumbs: Crumb[]; actions?: ReactNode }) {
+  const assistant = useAgentState()
   return (
     <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b bg-background/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/75 md:rounded-t-xl">
       <SidebarTrigger className="-ml-1" />
@@ -46,6 +48,23 @@ export function PageHeader({ crumbs, actions }: { crumbs: Crumb[]; actions?: Rea
       </Breadcrumb>
       <div className="flex shrink-0 items-center gap-1.5">
         {actions}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={assistant.open ? 'secondary' : 'ghost'}
+              size="icon-sm"
+              onClick={agent.toggle}
+              aria-label="Asistente"
+              aria-pressed={assistant.open}
+              data-tour="assistant-button"
+            >
+              <Sparkles />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            {assistant.status?.enabled ? 'Asistente: pregunta, compara escenarios, pide gráficos' : 'Asistente (sin clave de API configurada)'}
+          </TooltipContent>
+        </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" size="icon-sm" onClick={startTour} aria-label="Recorrido guiado">

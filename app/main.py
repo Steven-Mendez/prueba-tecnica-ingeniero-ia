@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import APIRouter, FastAPI
 
 from app.config import FRONTEND_DIST, get_settings
-from app.routers import data, factory_order, health, sales
+from app.routers import agent, data, factory_order, health, sales
 from app.services.factory_order import tracking
 from app.services.factory_order.base import DataError
 from app.services.factory_order.source import get_source
@@ -39,6 +39,7 @@ api.include_router(health.router)
 api.include_router(data.router)
 api.include_router(sales.router)
 api.include_router(factory_order.router)
+api.include_router(agent.router)
 app.include_router(api)
 
 # Frontend compilado (npm run build). Las rutas de la API tienen prioridad; el resto se busca en dist/ y,

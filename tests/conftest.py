@@ -20,6 +20,9 @@ shutil.copy(EXCEL, SOURCE)
 os.environ["FACTORY_ORDER_EXCEL"] = str(SOURCE)
 os.environ["PLANS_DIR"] = str(TMP / "planes")
 os.environ["DATA_CHECK_SECONDS"] = "0"
+# El asistente se prueba con un modelo falso: nunca con una clave real (aunque haya una en .env o en el entorno)
+os.environ["OPENAI_API_KEY"] = ""
+os.environ["ANTHROPIC_API_KEY"] = ""
 # Sin frontend/dist/ (no se versiona), `app.frontend()` solo avisa en modo desarrollo
 os.environ.setdefault("FASTAPI_ENV", "development")
 
