@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Entornos
+.venv
+
+# Sistema
+.DS_Store
+
+# Base limpia: la regeneran los notebooks 00_limpieza
+data/processed/

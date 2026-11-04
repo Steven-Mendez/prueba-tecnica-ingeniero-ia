@@ -1,0 +1,35 @@
+[project]
+name = "prueba-tecnica-casa-pellas"
+version = "0.1.0"
+description = "Prueba técnica Ingeniero de IA: sistema de pedidos a fábrica y diagnóstico de renovaciones"
+readme = "README.md"
+authors = [
+    { name = "Steven Mendez", email = "stevenampaiz@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "ipykernel>=7.4.0",
+    "matplotlib>=3.11.2",
+    "openpyxl>=3.1.5",
+    "pandas>=3.1.0",
+]
+
+
+[tool.uv]
+package = false  # no hay paquete: todo el código vive en los notebooks
+
+[dependency-groups]
+dev = [
+    "jupyter>=1.1.1",
+    "nbconvert>=7.17.2",
+    "ruff>=0.17.3",
+]
+
+[tool.ruff]
+line-length = 110
+extend-include = ["*.ipynb"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "B", "UP"]
+# El formatter controla el largo de línea; los textos largos en f-strings/Markdown no se pueden partir.
+ignore = ["E501"]

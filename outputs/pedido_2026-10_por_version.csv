@@ -1,0 +1,30 @@
+Modelo,Versión,Demanda 12m,Stock al corte,En tránsito,Necesidad hasta fin del horizonte,Faltante,Pedido
+Corolla,GLI 2.0 CVT,42.0,3.0,7,25.87,15.87,9
+Corolla,SEG Híbrido,27.0,20.0,5,16.63,0.0,0
+Corolla,XLI 1.8 CVT,55.0,0.0,7,33.88,26.88,15
+Corolla Cross,SEG 2.0 CVT,93.0,0.0,11,57.29,46.29,29
+Corolla Cross,SEG Híbrido,78.0,0.0,8,48.05,40.05,25
+Corolla Cross,XLI 2.0 CVT,114.0,0.0,11,70.23,59.23,36
+Fortuner,4x2 AT,43.0,10.0,8,26.49,8.49,9
+Fortuner,4x4 AT,43.0,6.0,8,26.49,12.49,13
+Fortuner,GR-S 4x4 AT,28.0,4.0,4,17.25,9.25,10
+Hiace,Commuter 15 pasajeros,56.0,2.0,6,34.5,26.5,15
+Hiace,Commuter Techo Alto,17.0,10.0,3,10.47,0.0,0
+Hiace,Panel,23.0,8.0,6,14.17,0.17,0
+Hilux,Cabina Sencilla 4x4 MT,64.0,51.0,21,39.43,0.0,0
+Hilux,Doble Cabina 4x2 MT,115.0,31.0,21,70.84,18.84,9
+Hilux,Doble Cabina 4x4 MT,156.0,40.0,32,96.1,24.1,11
+Hilux,SRV 4x4 AT,145.0,13.0,29,89.32,47.32,22
+Land Cruiser Prado,TX,19.0,3.0,4,11.7,4.7,5
+Land Cruiser Prado,TXL,18.0,1.0,4,11.09,6.09,7
+Land Cruiser Prado,VX,7.0,0.0,4,4.31,0.31,0
+RAV4,Limited Híbrido,33.0,2.0,11,20.33,7.33,5
+RAV4,XLE 2WD,44.0,1.0,20,27.1,6.1,5
+RAV4,XLE AWD,41.0,6.0,16,25.26,3.26,2
+Raize,Turbo SEG CVT,33.0,7.0,7,20.33,6.33,4
+Raize,XLI 1.2 CVT,42.0,9.0,10,25.87,6.87,5
+Raize,XLI 1.2 MT,39.0,4.0,7,24.02,13.02,9
+Rush,G 1.5 AT,69.0,0.0,7,42.51,35.51,20
+Rush,G 1.5 MT,53.0,0.0,5,32.65,27.65,16
+Yaris Cross,SEG Híbrido,75.0,0.0,10,46.2,36.2,22
+Yaris Cross,XLI 1.5 CVT,123.0,0.0,14,75.77,61.77,38
