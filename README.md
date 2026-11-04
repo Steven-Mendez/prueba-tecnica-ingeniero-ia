@@ -42,7 +42,7 @@ la visualización se reparten entre dos notebooks. El mapa de cada etapa a la se
 | 3. Adquisición y filtrado | `00_limpieza` §4: lectura del Excel; fuera duplicados, notas de crédito y flotas especiales | `00_limpieza` §4: fuera duplicados; teléfonos inválidos marcados |
 | 4. Extracción | `00_limpieza` §4.7: mínimos y múltiplos leídos del texto de los comunicados; §4.2: factura de referencia de cada nota de crédito | `00_limpieza` §4.1: las dos tablas apiladas de la hoja *Equipo*; §4.4: resumen por póliza desde la bitácora |
 | 5. Validación y limpieza | `00_limpieza` §4: catálogo de modelos y sucursales, precios en córdobas, antigüedad nula, conciliación del inventario | `00_limpieza` §4: *Renovó*, bitácora contra renovaciones, primer contacto nulo |
-| 6. Agregación y representación | `00_limpieza` §5 (base limpia) y `02` §3: tablas mes × modelo y por versión | `00_limpieza` §5: una fila por póliza con periodo, comisión y tramo de anticipación |
+| 6. Agregación y representación | `00_limpieza` §5 (base limpia), `02` §3 (tablas mes × modelo) y §8 (por versión) | `00_limpieza` §5: una fila por póliza con periodo, comisión y tramo de anticipación |
 | 7. Análisis | `01_eda` (demanda, inventario, lead time, economía) y `02` §2–§9 (cálculo del pedido y sensibilidad) | `01_eda_diagnostico` (causas y costo) y `02` §2–§5 (enrutamiento, prioridad, simulación, impacto) |
 | 8. Visualización | Gráficas de `01_eda` y resumen para la gerencia en `02` §10 | Gráficas de `01_eda_diagnostico` y resumen para el Comité en `02` §6 |
 | 9. Uso de los resultados | `02` §11–§13: pedido exportado, sistema para cada ciclo y respuesta a la gerencia | `02` §7–§10: cola del día, piloto y medición, prototipo y respuesta al Comité |
@@ -80,7 +80,7 @@ así que se pueden leer sin ejecutarlos.
    dentro de catálogo) y **se detiene** con un `assert` si aparece algo nuevo: una grafía desconocida, un
    modelo fuera de catálogo, una regla de fábrica que no se pudo leer del comunicado.
 3. `02_pedido_fabrica` recalcula el lead time y la fracción de llegadas tardías desde la hoja *Pedidos*,
-   lee mínimos y múltiplos de *Comunicados*, calcula el pedido y exporta las tablas por modelo y por versión
+   usa los mínimos y múltiplos que `00_limpieza` leyó de *Comunicados*, calcula el pedido y exporta las tablas por modelo y por versión
    a `outputs/` junto con la figura para la gerencia.
 4. El planificador revisa la tabla «cómo se llega» y la sensibilidad, ajusta lo que los datos no saben
    (flotas comprometidas, lanzamientos, promociones) y envía el pedido.
@@ -130,8 +130,8 @@ Nada de lo que devolvió la IA se aceptó sin comprobarlo:
   hoja de renovaciones (0 diferencias en intentos y fecha de primer contacto).
 - **Verificación cruzada de cada resultado.** Cada cifra del texto se contrasta con la tabla que la genera, y las
   tablas de tasas del Caso 2 se validan fuera de muestra (la tabla ajustada con 7 gestores reproduce la comisión
-  cobrada con 5 con un error de 0.4 %).
-- **Sensibilidad.** El pedido del Caso 1 se recalcula con demanda ±20 %, otro lead time y sin sustitución; el
-  impacto del Caso 2 se reporta como rango (piso observado, meta del piloto, techo de la simulación) en vez de
-  una sola cifra.
+  cobrada con 5 con un error de 0.4 %, aunque por tramos los errores se compensan).
+- **Sensibilidad.** El pedido del Caso 1 se recalcula con demanda ±20 %, otro lead time, sin sustitución y con dos
+  variantes del stock de seguridad; el impacto del Caso 2 se reporta como rango (piso observado, meta del piloto y
+  techo de la simulación, que a su vez varía según cómo se valore el tramo de anticipación) en vez de una sola cifra.
 - **Reproducibilidad.** Todo se vuelve a ejecutar desde los Excel originales con los comandos de arriba.
